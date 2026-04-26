@@ -46,7 +46,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         self.audio = audio
         self.config = config
         self.session = get_requests_session(
-            proxy_config=self.config,
+            proxy_config=self.config["proxy"],
             user_agent='%s/%s' % (
                 mopidy_mp3quran.Extension.dist_name,
                 mopidy_mp3quran.__version__)
