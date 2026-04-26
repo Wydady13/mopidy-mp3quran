@@ -8,7 +8,8 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: ghcr.io/mopidy/ci:latest
     strategy:
       matrix:
         python-version: ["3.x", "3.13"]
