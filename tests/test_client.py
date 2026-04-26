@@ -161,15 +161,17 @@ def mocked_api():
 @pytest.fixture
 def client(mocked_api):
     """Return an Mp3Quran client with mocked API."""
-    return Mp3Quran(locale="eng", cache_ttl=3600, timeout=10)
+    return Mp3Quran(cache_ttl=3600, timeout=10)
 
 
 class TestMp3QuranInit:
 
     def test_suras_loaded(self, client):
-        assert 1 in client.suras_name
-        assert client.suras_name[1] == "Al-Fatihah"
-        assert client.suras_name[2] == "Al-Baqarah"
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        assert 1 in data.suras_name
+        assert data.suras_name[1] == "Al-Fatihah"
+        assert data.suras_name[2] == "Al-Baqarah"
 
     def test_suras_name_stripped(self):
         with responses.mock:
@@ -178,21 +180,29 @@ class TestMp3QuranInit:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
-            c = Mp3Quran(locale="eng")
-            assert c.suras_name[1] == "Al-Fatihah"
-            assert c.suras_name[2] == "Al-Baqarah"
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert data.suras_name[1] == "Al-Fatihah"
+            assert data.suras_name[2] == "Al-Baqarah"
 
     def test_riwayat_loaded(self, client):
-        assert 1 in client.riwayat
-        assert client.riwayat[1] == "Rewayat Hafs A'n Assem"
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        assert 1 in data.riwayat
+        assert data.riwayat[1] == "Rewayat Hafs A'n Assem"
 
     def test_reciters_loaded(self, client):
-        assert 1 in client.reciters
-        assert client.reciters[1]["name"] == "Mishary Rashid Alafasy"
-        assert len(client.reciters[1]["moshaf"]) == 2
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        assert 1 in data.reciters
+        assert data.reciters[1]["name"] == "Mishary Rashid Alafasy"
+        assert len(data.reciters[1]["moshaf"]) == 2
 
     def test_moshaf_data(self, client):
-        moshaf = client.reciters[1]["moshaf"][0]
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        moshaf = data.reciters[1]["moshaf"][0]
         assert moshaf["id"] == 1
         assert moshaf["name"] == "Rewayat Hafs A'n Assem - Murattal"
         assert moshaf["rewaya_id"] == 1
@@ -200,9 +210,11 @@ class TestMp3QuranInit:
         assert moshaf["surah_list"] == [1, 2, 3]
 
     def test_radios_loaded(self, client):
-        assert 1 in client.radios
-        assert client.radios[1]["name"] == "Quran Radio 24/7"
-        assert client.radios[1]["url"] == "https://stream.example.com/radio1"
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        assert 1 in data.radios
+        assert data.radios[1]["name"] == "Quran Radio 24/7"
+        assert data.radios[1]["url"] == "https://stream.example.com/radio1"
 
     def test_languages_loaded(self, client):
         assert len(client.languages) == 2
@@ -213,39 +225,6 @@ class TestMp3QuranInit:
 
     def test_default_locale(self):
         assert _DEFAULT_LOCALE == "eng"
-
-
-class TestMp3QuranSetLocale:
-
-    def test_set_locale_reloads_reciters(self, mocked_api):
-        responses.add(
-            responses.GET,
-            _api_url('suwar?language=ar'),
-            json=SURAS_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('riwayat?language=ar'),
-            json=RIWAYAT_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('reciters?language=ar'),
-            json=RECITERS_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('radios?language=ar'),
-            json=RADIOS_RESPONSE,
-            status=200,
-        )
-        c = Mp3Quran(locale="eng")
-        assert c.locale == "eng"
-        c.set_locale("ar")
-        assert c.locale == "ar"
 
 
 class TestMp3QuranResolveLanguage:
@@ -269,49 +248,15 @@ class TestMp3QuranResolveLanguage:
     def test_unknown_name_returns_lowered(self, client):
         assert client.resolve_language("Swahili") == "swahili"
 
-    def test_set_locale_with_long_form(self, mocked_api):
-        responses.add(
-            responses.GET,
-            _api_url('suwar?language=ar'),
-            json=SURAS_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('riwayat?language=ar'),
-            json=RIWAYAT_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('reciters?language=ar'),
-            json=RECITERS_RESPONSE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            _api_url('radios?language=ar'),
-            json=RADIOS_RESPONSE,
-            status=200,
-        )
-        c = Mp3Quran(locale="English")
-        assert c.locale == "eng"
-        c.set_locale("Arabic")
-        assert c.locale == "ar"
-
-    def test_init_with_long_form(self, mocked_api):
-        c = Mp3Quran(locale="English")
-        assert c.locale == "eng"
-
 
 class TestMp3QuranGetLanguages:
 
     def test_returns_directory_refs(self, client):
         refs = client.get_languages()
         assert len(refs) == 2
-        assert refs[0].uri == "mp3quran:language:ar"
+        assert refs[0].uri == "mp3quran:ar:language"
         assert refs[0].name == "Arabic"
-        assert refs[1].uri == "mp3quran:language:eng"
+        assert refs[1].uri == "mp3quran:eng:language"
         assert refs[1].name == "English"
 
     def test_ref_type_is_directory(self, client):
@@ -323,14 +268,14 @@ class TestMp3QuranGetLanguages:
 class TestMp3QuranGetRadios:
 
     def test_returns_track_refs(self, client):
-        refs = client.get_radios()
+        refs = client.get_radios('eng')
         assert len(refs) == 2
         uris = [r.uri for r in refs]
-        assert "mp3quran:radio:1" in uris
-        assert "mp3quran:radio:2" in uris
+        assert "mp3quran:eng:radio:1" in uris
+        assert "mp3quran:eng:radio:2" in uris
 
     def test_ref_type_is_track(self, client):
-        refs = client.get_radios()
+        refs = client.get_radios('eng')
         for ref in refs:
             assert ref.type == "track"
 
@@ -338,13 +283,13 @@ class TestMp3QuranGetRadios:
 class TestMp3QuranGetReciters:
 
     def test_returns_directory_refs(self, client):
-        refs = client.get_reciters()
+        refs = client.get_reciters('eng')
         assert len(refs) == 2
-        assert refs[0].uri == "mp3quran:reciter:1"
+        assert refs[0].uri == "mp3quran:eng:reciter:1"
         assert "Mishary Rashid Alafasy" in refs[0].name
 
     def test_ref_type_is_directory(self, client):
-        refs = client.get_reciters()
+        refs = client.get_reciters('eng')
         for ref in refs:
             assert ref.type == "directory"
 
@@ -352,37 +297,37 @@ class TestMp3QuranGetReciters:
 class TestMp3QuranReciterMoshaf:
 
     def test_returns_moshaf_refs(self, client):
-        refs = client.reciter_moshaf(1)
+        refs = client.reciter_moshaf('eng', 1)
         assert len(refs) == 2
-        assert refs[0].uri == "mp3quran:moshaf:1:1"
+        assert refs[0].uri == "mp3quran:eng:moshaf:1:1"
         assert refs[0].name == "Rewayat Hafs A'n Assem - Murattal"
-        assert refs[1].uri == "mp3quran:moshaf:1:2"
+        assert refs[1].uri == "mp3quran:eng:moshaf:1:2"
         assert refs[1].name == "Rewayat Warsh A'n Nafi' - Murattal"
 
     def test_unknown_reciter_returns_empty(self, client):
-        refs = client.reciter_moshaf(999)
+        refs = client.reciter_moshaf('eng', 999)
         assert refs == []
 
 
 class TestMp3QuranMoshafSuras:
 
     def test_returns_track_refs(self, client):
-        refs = client.moshaf_suras(1, 1)
+        refs = client.moshaf_suras('eng', 1, 1)
         assert len(refs) == 3
-        assert refs[0].uri == "mp3quran:reciter:1:1:1"
+        assert refs[0].uri == "mp3quran:eng:reciter:1:1:1"
         assert refs[0].name == "Al-Fatihah"
         assert refs[0].type == "track"
 
     def test_unknown_moshaf_returns_empty(self, client):
-        refs = client.moshaf_suras(1, 999)
+        refs = client.moshaf_suras('eng', 1, 999)
         assert refs == []
 
     def test_unknown_reciter_returns_empty(self, client):
-        refs = client.moshaf_suras(999, 1)
+        refs = client.moshaf_suras('eng', 999, 1)
         assert refs == []
 
     def test_surah_name_fallback(self, client):
-        refs = client.moshaf_suras(2, 3)
+        refs = client.moshaf_suras('eng', 2, 3)
         assert len(refs) == 2
         assert refs[0].name == "Al-Fatihah"
         assert refs[1].name == "Al-Baqarah"
@@ -391,96 +336,99 @@ class TestMp3QuranMoshafSuras:
 class TestMp3QuranTranslateUri:
 
     def test_reciter_surah_uri(self, client):
-        url = client.translate_uri("mp3quran:reciter:1:1:2")
+        url = client.translate_uri("mp3quran:eng:reciter:1:1:2")
         assert url == "https://server.example.com/mishary/002.mp3"
 
     def test_reciter_second_moshaf_uri(self, client):
-        url = client.translate_uri("mp3quran:reciter:1:2:2")
+        url = client.translate_uri("mp3quran:eng:reciter:1:2:2")
         assert url == "https://server.example.com/mishary_warsh/002.mp3"
 
     def test_radio_uri(self, client):
-        url = client.translate_uri("mp3quran:radio:1")
+        url = client.translate_uri("mp3quran:eng:radio:1")
         assert url == "https://stream.example.com/radio1"
 
     def test_invalid_uri_returns_none(self, client):
-        assert client.translate_uri("mp3quran:invalid") is None
+        assert client.translate_uri("mp3quran:eng:invalid") is None
 
     def test_empty_uri_returns_none(self, client):
         assert client.translate_uri("mp3quran:") is None
 
     def test_unknown_variant_returns_none(self, client):
-        assert client.translate_uri("mp3quran:unknown:1") is None
+        assert client.translate_uri("mp3quran:eng:unknown:1") is None
 
     def test_reciter_without_moshaf_returns_none(self, client):
-        assert client.translate_uri("mp3quran:reciter:1") is None
+        assert client.translate_uri("mp3quran:eng:reciter:1") is None
 
     def test_reciter_without_surah_returns_none(self, client):
-        assert client.translate_uri("mp3quran:reciter:1:1") is None
+        assert client.translate_uri("mp3quran:eng:reciter:1:1") is None
 
     def test_unknown_radio_returns_none(self, client):
-        assert client.translate_uri("mp3quran:radio:99") is None
+        assert client.translate_uri("mp3quran:eng:radio:99") is None
 
     def test_unknown_moshaf_returns_none(self, client):
-        assert client.translate_uri("mp3quran:reciter:1:999:2") is None
+        assert client.translate_uri("mp3quran:eng:reciter:1:999:2") is None
 
     def test_surah_not_in_moshaf_returns_none(self, client):
-        assert client.translate_uri("mp3quran:reciter:2:3:99") is None
+        assert client.translate_uri("mp3quran:eng:reciter:2:3:99") is None
 
 
 class TestMp3QuranSearch:
 
     def test_search_reciter_by_name(self, client):
-        refs = client.search("Mishary")
+        refs = client.search('eng', "Mishary")
         assert len(refs) >= 1
         assert "Mishary" in refs[0].name
 
     def test_search_reciter_by_moshaf_name(self, client):
-        refs = client.search("Warsh")
+        refs = client.search('eng', "Warsh")
         assert len(refs) >= 1
 
     def test_search_radio(self, client):
-        refs = client.search("24/7")
+        refs = client.search('eng', "24/7")
         assert len(refs) == 1
         assert refs[0].name == "Quran Radio 24/7"
 
     def test_search_case_insensitive(self, client):
-        refs = client.search("mishary")
+        refs = client.search('eng', "mishary")
         assert len(refs) >= 1
 
     def test_search_no_results(self, client):
-        refs = client.search("nonexistent")
+        refs = client.search('eng', "nonexistent")
         assert refs == []
 
     def test_search_radio_returns_track_ref(self, client):
-        refs = client.search("Radio")
-        radio_refs = [r for r in refs if r.uri.startswith("mp3quran:radio:")]
+        refs = client.search('eng', "Radio")
+        radio_refs = [r for r in refs if r.uri.startswith("mp3quran:eng:radio:")]
         assert len(radio_refs) >= 1
         assert radio_refs[0].type == "track"
 
     def test_search_reciter_returns_directory_ref(self, client):
-        refs = client.search("Mishary")
+        refs = client.search('eng', "Mishary")
         assert refs[0].type == "directory"
 
 
 class TestMp3QuranCaching:
 
     def test_cache_prevents_refetch(self, mocked_api):
-        c = Mp3Quran(locale="eng", cache_ttl=3600)
+        c = Mp3Quran(cache_ttl=3600)
+        c._ensure_loaded('eng')
         first_call_count = len(responses.calls)
-        c._init_reciters()
+        c._ensure_loaded('eng')
         second_call_count = len(responses.calls)
         assert second_call_count == first_call_count
 
     def test_cache_expiry_triggers_refetch(self, mocked_api):
-        c = Mp3Quran(locale="eng", cache_ttl=1)
+        c = Mp3Quran(cache_ttl=1)
+        c._ensure_loaded('eng')
         initial_calls = len(responses.calls)
         time.sleep(1.1)
-        c._init_reciters()
+        c._locales.clear()
+        c._ensure_loaded('eng')
         assert len(responses.calls) > initial_calls
 
     def test_refresh_clears_cache(self, client):
         client.refresh()
-        assert client._reciters_timestamp == 0.0 or len(responses.calls) > 0
+        assert len(client._locales) == 0
 
 
 class TestMp3QuranErrorHandling:
@@ -488,11 +436,7 @@ class TestMp3QuranErrorHandling:
     def test_failed_languages_request(self):
         with responses.mock:
             responses.add(responses.GET, _api_url('languages'), status=500)
-            responses.add(responses.GET, _api_url('suwar?language=eng'), json=SURAS_RESPONSE, status=200)
-            responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
-            responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
-            responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
-            c = Mp3Quran(locale="eng")
+            c = Mp3Quran()
             assert c.languages == []
 
     def test_failed_suras_request(self):
@@ -502,8 +446,10 @@ class TestMp3QuranErrorHandling:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
-            c = Mp3Quran(locale="eng")
-            assert c.suras_name == {}
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert data.suras_name == {}
 
     def test_failed_reciters_request(self):
         with responses.mock:
@@ -512,8 +458,10 @@ class TestMp3QuranErrorHandling:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), status=500)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
-            c = Mp3Quran(locale="eng")
-            assert c.reciters == {}
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert data.reciters == {}
 
     def test_failed_radios_request(self):
         with responses.mock:
@@ -522,8 +470,10 @@ class TestMp3QuranErrorHandling:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), status=500)
-            c = Mp3Quran(locale="eng")
-            assert c.radios == {}
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert data.radios == {}
 
     def test_invalid_moshaf_entry_skipped(self):
         bad_reciters = {
@@ -553,9 +503,11 @@ class TestMp3QuranErrorHandling:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=bad_reciters, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
-            c = Mp3Quran(locale="eng")
-            assert 1 in c.reciters
-            assert len(c.reciters) == 1
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert 1 in data.reciters
+            assert len(data.reciters) == 1
 
     def test_invalid_radio_entry_skipped(self):
         bad_radios = {
@@ -570,6 +522,8 @@ class TestMp3QuranErrorHandling:
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=bad_radios, status=200)
-            c = Mp3Quran(locale="eng")
-            assert 1 in c.radios
-            assert len(c.radios) == 1
+            c = Mp3Quran()
+            data = c._get_locale_data('eng')
+            c._ensure_loaded('eng')
+            assert 1 in data.radios
+            assert len(data.radios) == 1

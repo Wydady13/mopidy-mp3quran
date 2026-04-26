@@ -44,7 +44,6 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         mp3quran_config = config.get('mp3quran', {})
         self.mp3quran = client.Mp3Quran(
             session=self.session,
-            locale=mp3quran_config.get('language', client._DEFAULT_LOCALE),
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
         )
@@ -62,37 +61,50 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         """Browse the library at the given URI."""
         results = []
         parsed = uri.split(':')
-        variant = parsed[1] if len(parsed) >= 2 else None
-        identifier = parsed[2] if len(parsed) >= 3 else None
-        extra = parsed[3] if len(parsed) >= 4 else None
+        mp3quran = self.backend.mp3quran
 
-        if variant == 'root':
+        # mp3quran:root
+        if len(parsed) == 2 and parsed[1] == 'root':
+            locale = mp3quran.resolve_language(
+                self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
+            )
             results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
-            results.append(Ref.directory(uri='mp3quran:reciters', name='Reciters'))
-            results.append(Ref.directory(uri='mp3quran:riwayat', name='Riwayat'))
-            results.append(Ref.directory(uri='mp3quran:radios', name='Radios'))
-            results.append(Ref.directory(uri='mp3quran:tafasir', name='Tafasir'))
-        elif variant == 'languages':
-            results = self.backend.mp3quran.get_languages()
-        elif variant == 'language' and identifier:
-            self.backend.mp3quran.set_locale(identifier)
-            results = self.backend.mp3quran.get_reciters()
-        elif variant == 'radios':
-            results = self.backend.mp3quran.get_radios()
-        elif variant == 'riwayat':
-            results = self.backend.mp3quran.get_riwayat()
-        elif variant == 'riwaya' and identifier:
-            results = self.backend.mp3quran.riwaya_reciters(int(identifier))
-        elif variant == 'tafasir':
-            results = self.backend.mp3quran.get_tafasir()
-        elif variant == 'tafsir' and identifier:
-            results = self.backend.mp3quran.tafsir_audio(int(identifier))
+            results.extend(mp3quran.get_language_content(locale))
+            return results
+
+        # mp3quran:languages
+        if len(parsed) == 2 and parsed[1] == 'languages':
+            results = mp3quran.get_languages()
+            return results
+
+        # mp3quran:<locale>:<variant>[:<id>...]
+        if len(parsed) < 3:
+            logger.debug('Unknown uri: %s at library.browse', uri)
+            return results
+
+        locale = parsed[1]
+        variant = parsed[2]
+        identifier = parsed[3] if len(parsed) >= 4 else None
+        extra = parsed[4] if len(parsed) >= 5 else None
+
+        if variant == 'language':
+            results = mp3quran.get_language_content(locale)
         elif variant == 'reciters':
-            results = self.backend.mp3quran.get_reciters()
+            results = mp3quran.get_reciters(locale)
         elif variant == 'reciter' and identifier:
-            results = self.backend.mp3quran.reciter_moshaf(identifier)
+            results = mp3quran.reciter_moshaf(locale, int(identifier))
         elif variant == 'moshaf' and identifier and extra:
-            results = self.backend.mp3quran.moshaf_suras(int(identifier), int(extra))
+            results = mp3quran.moshaf_suras(locale, int(identifier), int(extra))
+        elif variant == 'riwayat':
+            results = mp3quran.get_riwayat(locale)
+        elif variant == 'riwaya' and identifier:
+            results = mp3quran.riwaya_reciters(locale, int(identifier))
+        elif variant == 'radios':
+            results = mp3quran.get_radios(locale)
+        elif variant == 'tafasir':
+            results = mp3quran.get_tafasir(locale)
+        elif variant == 'tafsir' and identifier:
+            results = mp3quran.tafsir_audio(locale, int(identifier))
         else:
             logger.debug('Unknown uri: %s at library.browse', uri)
 
@@ -107,27 +119,28 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         parsed_uri = uri.split(':')[1:]
         logger.debug('Looking up uri: %s', uri)
 
-        if not parsed_uri or len(parsed_uri) < 2:
+        if len(parsed_uri) < 3:
             logger.debug('Invalid uri format: %s', uri)
             return tracks
 
         try:
-            variant = parsed_uri[0]
+            locale = parsed_uri[0]
+            variant = parsed_uri[1]
             if variant == 'reciter':
-                if len(parsed_uri) != 4:
+                if len(parsed_uri) != 5:
                     logger.debug('Invalid reciter uri format: %s', uri)
                     return tracks
-                reciter_id = int(parsed_uri[1])
-                moshaf_id = int(parsed_uri[2])
-                sura_no = int(parsed_uri[3])
+                reciter_id = int(parsed_uri[2])
+                moshaf_id = int(parsed_uri[3])
+                sura_no = int(parsed_uri[4])
             elif variant == 'radio':
-                radio_id = int(parsed_uri[1])
+                radio_id = int(parsed_uri[2])
             elif variant == 'tafsir_audio':
-                if len(parsed_uri) != 3:
+                if len(parsed_uri) != 4:
                     logger.debug('Invalid tafsir_audio uri format: %s', uri)
                     return tracks
-                tafsir_id = int(parsed_uri[1])
-                audio_id = int(parsed_uri[2])
+                tafsir_id = int(parsed_uri[2])
+                audio_id = int(parsed_uri[3])
             else:
                 logger.debug('Unknown variant in uri: %s', uri)
                 return tracks
@@ -135,11 +148,16 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             logger.debug('Invalid uri %s: %s', uri, e)
             return tracks
 
+        mp3quran = self.backend.mp3quran
+        data = mp3quran._get_locale_data(locale)
+
         if variant == 'reciter':
-            if reciter_id not in self.backend.mp3quran.reciters:
+            mp3quran._init_reciters(locale, data)
+            mp3quran._init_suras(locale, data)
+            if reciter_id not in data.reciters:
                 logger.debug('Reciter ID %d not found', reciter_id)
                 return tracks
-            reciter = self.backend.mp3quran.reciters[reciter_id]
+            reciter = data.reciters[reciter_id]
             moshaf_found = None
             for moshaf in reciter['moshaf']:
                 if moshaf['id'] == moshaf_id:
@@ -148,7 +166,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             if moshaf_found is None:
                 logger.debug('Moshaf ID %d not found for reciter %d', moshaf_id, reciter_id)
                 return tracks
-            sura_name = self.backend.mp3quran.suras_name.get(sura_no, 'Surah %d' % sura_no)
+            sura_name = data.suras_name.get(sura_no, 'Surah %d' % sura_no)
             artists = [Artist(name=reciter['name'])]
             album = Album(name=moshaf_found['name'])
             tracks.append(Track(
@@ -156,15 +174,17 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
                 artists=artists, album=album, track_no=sura_no,
             ))
         elif variant == 'radio':
-            if radio_id in self.backend.mp3quran.radios:
-                radio = self.backend.mp3quran.radios[radio_id]
+            mp3quran._init_radios(locale, data)
+            if radio_id in data.radios:
+                radio = data.radios[radio_id]
                 tracks.append(Track(uri=uri, name=radio['name']))
             else:
                 logger.debug('Radio ID %d not found', radio_id)
         elif variant == 'tafsir_audio':
-            url = self.backend.mp3quran.translate_tafsir_uri(tafsir_id, audio_id)
+            mp3quran._init_tafasir(locale, data)
+            url = mp3quran.translate_tafsir_uri(tafsir_id, audio_id, locale=locale)
             if url:
-                tafsir_name = self.backend.mp3quran.tafasir.get(tafsir_id, {}).get('name', 'Tafsir')
+                tafsir_name = data.tafasir.get(tafsir_id, {}).get('name', 'Tafsir')
                 tracks.append(Track(uri=uri, name=tafsir_name, album=Album(name=tafsir_name)))
             else:
                 logger.debug('Tafsir audio %d/%d not found', tafsir_id, audio_id)
@@ -185,18 +205,27 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         if not query_str.strip():
             return None
 
-        results = self.backend.mp3quran.search(query_str)
+        mp3quran = self.backend.mp3quran
+        locale = mp3quran.resolve_language(
+            self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
+        )
+
+        results = mp3quran.search(locale, query_str)
         tracks = []
         artists = []
         for ref in results:
             if ref.type == Ref.TRACK:
                 lookup_tracks = self.lookup(ref.uri)
                 tracks.extend(lookup_tracks)
-            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:reciter:'):
+            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:'):
                 try:
-                    reciter_id = int(ref.uri.split(':')[2])
-                    reciter = self.backend.mp3quran.reciters[reciter_id]
-                    artists.append(Artist(name=reciter['name']))
+                    parts = ref.uri.split(':')
+                    if len(parts) >= 4 and parts[2] == 'reciter':
+                        reciter_id = int(parts[3])
+                        data = mp3quran._get_locale_data(locale)
+                        mp3quran._init_reciters(locale, data)
+                        reciter = data.reciters[reciter_id]
+                        artists.append(Artist(name=reciter['name']))
                 except (IndexError, ValueError, KeyError):
                     logger.debug('Could not extract artist from ref: %s', ref.uri)
 
@@ -220,4 +249,4 @@ class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
             return None
 
     def is_live(self, uri: str) -> bool:
-        return uri.startswith('mp3quran:radio:')
+        return uri.startswith('mp3quran:') and ':radio:' in uri

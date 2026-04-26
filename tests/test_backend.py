@@ -234,67 +234,70 @@ class TestMp3QuranLibraryProvider:
         results = library.browse("mp3quran:root")
         assert len(results) == 5
         assert results[0].uri == "mp3quran:languages"
-        assert results[1].uri == "mp3quran:reciters"
-        assert results[2].uri == "mp3quran:riwayat"
-        assert results[3].uri == "mp3quran:radios"
-        assert results[4].uri == "mp3quran:tafasir"
+        assert results[1].uri == "mp3quran:eng:reciters"
+        assert results[2].uri == "mp3quran:eng:riwayat"
+        assert results[3].uri == "mp3quran:eng:radios"
+        assert results[4].uri == "mp3quran:eng:tafasir"
 
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")
         assert len(results) == 2
-        assert results[0].uri == "mp3quran:language:ar"
+        assert results[0].uri == "mp3quran:ar:language"
         assert results[0].name == "Arabic"
-        assert results[1].uri == "mp3quran:language:eng"
+        assert results[1].uri == "mp3quran:eng:language"
         assert results[1].name == "English"
 
-    def test_browse_language_switches_and_shows_reciters(self, library):
-        results = library.browse("mp3quran:language:eng")
-        assert len(results) == 1
-        assert results[0].uri == "mp3quran:reciter:1"
-        assert results[0].type == Ref.DIRECTORY
+    def test_browse_language_shows_categories(self, library):
+        results = library.browse("mp3quran:ar:language")
+        assert len(results) == 4
+        assert results[0].uri == "mp3quran:ar:reciters"
+        assert results[1].uri == "mp3quran:ar:riwayat"
+        assert results[2].uri == "mp3quran:ar:radios"
+        assert results[3].uri == "mp3quran:ar:tafasir"
 
     def test_browse_reciters(self, library):
-        results = library.browse("mp3quran:reciters")
+        results = library.browse("mp3quran:eng:reciters")
         assert len(results) == 1
-        assert results[0].uri == "mp3quran:reciter:1"
+        assert results[0].uri == "mp3quran:eng:reciter:1"
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_reciter_shows_moshaf(self, library):
-        results = library.browse("mp3quran:reciter:1")
+        results = library.browse("mp3quran:eng:reciter:1")
         assert len(results) == 1
-        assert results[0].uri == "mp3quran:moshaf:1:1"
+        assert results[0].uri == "mp3quran:eng:moshaf:1:1"
         assert results[0].name == "Rewayat Hafs A'n Assem - Murattal"
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_moshaf_shows_suras(self, library):
-        results = library.browse("mp3quran:moshaf:1:1")
+        results = library.browse("mp3quran:eng:moshaf:1:1")
         assert len(results) == 3
-        assert results[0].uri == "mp3quran:reciter:1:1:1"
+        assert results[0].uri == "mp3quran:eng:reciter:1:1:1"
         assert results[0].name == "Al-Fatihah"
         assert results[0].type == Ref.TRACK
 
-    def test_browse_radios(self, library):
-        results = library.browse("mp3quran:radios")
-        assert len(results) == 1
-        assert results[0].uri == "mp3quran:radio:1"
-        assert results[0].type == Ref.TRACK
-
     def test_browse_riwayat(self, library):
-        results = library.browse("mp3quran:riwayat")
+        results = library.browse("mp3quran:eng:riwayat")
         assert len(results) == 1
-        assert results[0].uri == "mp3quran:riwaya:1"
+        assert results[0].uri == "mp3quran:eng:riwaya:1"
         assert results[0].name == "Rewayat Hafs A'n Assem"
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_riwaya_reciters(self, library):
-        results = library.browse("mp3quran:riwaya:1")
+        results = library.browse("mp3quran:eng:riwaya:1")
         assert len(results) == 1
+        assert results[0].uri == "mp3quran:eng:moshaf:1:1"
         assert results[0].type == Ref.DIRECTORY
 
-    def test_browse_tafasir(self, library):
-        results = library.browse("mp3quran:tafasir")
+    def test_browse_radios(self, library):
+        results = library.browse("mp3quran:eng:radios")
         assert len(results) == 1
-        assert results[0].uri == "mp3quran:tafsir:1"
+        assert results[0].uri == "mp3quran:eng:radio:1"
+        assert results[0].type == Ref.TRACK
+
+    def test_browse_tafasir(self, library):
+        results = library.browse("mp3quran:eng:tafasir")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:eng:tafsir:1"
         assert results[0].name == "Summary of Tafsir Al-Tabari"
         assert results[0].type == Ref.DIRECTORY
 
@@ -306,9 +309,9 @@ class TestMp3QuranLibraryProvider:
                 json=TAFASIR_DETAIL_RESPONSE,
                 status=200,
             )
-            results = library.browse("mp3quran:tafsir:1")
+            results = library.browse("mp3quran:eng:tafsir:1")
             assert len(results) == 2
-            assert results[0].uri == "mp3quran:tafsir_audio:1:9"
+            assert results[0].uri == "mp3quran:eng:tafsir_audio:1:9"
             assert results[0].type == Ref.TRACK
 
     def test_lookup_tafsir_audio(self, library):
@@ -319,7 +322,7 @@ class TestMp3QuranLibraryProvider:
                 json=TAFASIR_DETAIL_RESPONSE,
                 status=200,
             )
-            tracks = library.lookup("mp3quran:tafsir_audio:1:9")
+            tracks = library.lookup("mp3quran:eng:tafsir_audio:1:9")
             assert len(tracks) == 1
             assert tracks[0].name == "Summary of Tafsir Al-Tabari"
 
@@ -328,19 +331,19 @@ class TestMp3QuranLibraryProvider:
         assert results == []
 
     def test_lookup_reciter_surah(self, library):
-        tracks = library.lookup("mp3quran:reciter:1:1:2")
+        tracks = library.lookup("mp3quran:eng:reciter:1:1:2")
         assert len(tracks) == 1
         track = tracks[0]
-        assert track.uri == "mp3quran:reciter:1:1:2"
+        assert track.uri == "mp3quran:eng:reciter:1:1:2"
         assert track.name == "Al-Baqarah"
         assert any(a.name == "Mishary Rashid Alafasy" for a in track.artists)
         assert track.album.name == "Rewayat Hafs A'n Assem - Murattal"
         assert track.track_no == 2
 
     def test_lookup_radio(self, library):
-        tracks = library.lookup("mp3quran:radio:1")
+        tracks = library.lookup("mp3quran:eng:radio:1")
         assert len(tracks) == 1
-        assert tracks[0].uri == "mp3quran:radio:1"
+        assert tracks[0].uri == "mp3quran:eng:radio:1"
         assert tracks[0].name == "Quran Radio 24/7"
 
     def test_lookup_invalid_uri(self, library):
@@ -348,19 +351,19 @@ class TestMp3QuranLibraryProvider:
         assert tracks == []
 
     def test_lookup_unknown_variant(self, library):
-        tracks = library.lookup("mp3quran:unknown:1")
+        tracks = library.lookup("mp3quran:eng:unknown:1")
         assert tracks == []
 
     def test_lookup_nonexistent_reciter(self, library):
-        tracks = library.lookup("mp3quran:reciter:999:1:1")
+        tracks = library.lookup("mp3quran:eng:reciter:999:1:1")
         assert tracks == []
 
     def test_lookup_nonexistent_radio(self, library):
-        tracks = library.lookup("mp3quran:radio:99")
+        tracks = library.lookup("mp3quran:eng:radio:99")
         assert tracks == []
 
     def test_lookup_invalid_identifier(self, library):
-        tracks = library.lookup("mp3quran:reciter:abc")
+        tracks = library.lookup("mp3quran:eng:reciter:abc")
         assert tracks == []
 
     def test_refresh(self, library):
@@ -412,11 +415,11 @@ class TestMp3QuranLibrarySearch:
 class TestMp3QuranPlaybackProvider:
 
     def test_translate_uri_reciter(self, playback):
-        url = playback.translate_uri("mp3quran:reciter:1:1:2")
+        url = playback.translate_uri("mp3quran:eng:reciter:1:1:2")
         assert url == "https://server.example.com/mishary/002.mp3"
 
     def test_translate_uri_radio(self, playback):
-        url = playback.translate_uri("mp3quran:radio:1")
+        url = playback.translate_uri("mp3quran:eng:radio:1")
         assert url == "https://stream.example.com/radio1"
 
     def test_translate_uri_tafsir_audio(self, playback):
@@ -427,7 +430,7 @@ class TestMp3QuranPlaybackProvider:
                 json=TAFASIR_DETAIL_RESPONSE,
                 status=200,
             )
-            url = playback.translate_uri("mp3quran:tafsir_audio:1:9")
+            url = playback.translate_uri("mp3quran:eng:tafsir_audio:1:9")
             assert url == "https://server17.mp3quran.net/tafseer/tabri/001.mp3"
 
     def test_translate_uri_invalid(self, playback):
@@ -435,7 +438,7 @@ class TestMp3QuranPlaybackProvider:
         assert url is None
 
     def test_is_live_radio(self, playback):
-        assert playback.is_live("mp3quran:radio:1") is True
+        assert playback.is_live("mp3quran:eng:radio:1") is True
 
     def test_is_live_reciter(self, playback):
-        assert playback.is_live("mp3quran:reciter:1:1:2") is False
+        assert playback.is_live("mp3quran:eng:reciter:1:1:2") is False

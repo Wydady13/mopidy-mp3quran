@@ -13,13 +13,31 @@ _DEFAULT_TIMEOUT = 10  # seconds
 _DEFAULT_LOCALE = 'eng'
 
 
+class _LocaleData:
+    """Cached data for a single locale."""
+
+    __slots__ = ('reciters', 'radios', 'suras_name', 'riwayat', 'tafasir',
+                 'reciters_ts', 'radios_ts', 'suras_ts', 'riwayat_ts', 'tafasir_ts')
+
+    def __init__(self):
+        self.reciters: Dict[int, Dict[str, Any]] = {}
+        self.radios: Dict[int, Dict[str, str]] = {}
+        self.suras_name: Dict[int, str] = {}
+        self.riwayat: Dict[int, str] = {}
+        self.tafasir: Dict[int, Dict[str, Any]] = {}
+        self.reciters_ts: float = 0.0
+        self.radios_ts: float = 0.0
+        self.suras_ts: float = 0.0
+        self.riwayat_ts: float = 0.0
+        self.tafasir_ts: float = 0.0
+
+
 class Mp3Quran:
-    """Client for the mp3quran.net v3 REST API with caching."""
+    """Client for the mp3quran.net v3 REST API with per-locale caching."""
 
     def __init__(
         self,
         session: requests.Session = None,
-        locale: str = _DEFAULT_LOCALE,
         cache_ttl: int = _DEFAULT_CACHE_TTL,
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
@@ -28,27 +46,11 @@ class Mp3Quran:
         self.timeout = timeout
 
         self.languages: List[Dict[str, str]] = []
-        self.reciters: Dict[int, Dict[str, Any]] = {}
-        self.radios: Dict[int, Dict[str, str]] = {}
-        self.suras_name: Dict[int, str] = {}
-        self.riwayat: Dict[int, str] = {}
-        self.tafasir: Dict[int, Dict[str, Any]] = {}
-
         self._languages_timestamp: float = 0.0
-        self._reciters_timestamp: float = 0.0
-        self._radios_timestamp: float = 0.0
-        self._suras_timestamp: float = 0.0
-        self._riwayat_timestamp: float = 0.0
-        self._tafasir_timestamp: float = 0.0
 
-        self._current_locale: str = ''
+        self._locales: Dict[str, _LocaleData] = {}
 
         self._init_languages()
-        self.set_locale(locale)
-
-    @property
-    def locale(self) -> str:
-        return self._current_locale
 
     def resolve_language(self, name: str) -> str:
         """Resolve a language name or locale code to a canonical locale code.
@@ -63,33 +65,21 @@ class Mp3Quran:
                 return lang['locale']
         return lower
 
-    def _get_lang_url(self, key: str) -> str:
-        """Get the API URL for the current language by key."""
-        return _API_BASE + key + '?language=' + self._current_locale
+    def _get_locale_data(self, locale: str) -> _LocaleData:
+        """Get or create locale data, loading on first access."""
+        if locale not in self._locales:
+            self._locales[locale] = _LocaleData()
+        return self._locales[locale]
 
-    def set_locale(self, locale: str) -> None:
-        """Switch to a different locale and reload reciters/suras/radios.
-
-        Accepts both locale codes ('eng') and full names ('English'),
-        case-insensitive.
-        """
-        resolved = self.resolve_language(locale)
-        self._current_locale = resolved
-        self.reciters = {}
-        self.radios = {}
-        self.suras_name = {}
-        self.riwayat = {}
-        self.tafasir = {}
-        self._reciters_timestamp = 0.0
-        self._radios_timestamp = 0.0
-        self._suras_timestamp = 0.0
-        self._riwayat_timestamp = 0.0
-        self._tafasir_timestamp = 0.0
-        self._init_suras()
-        self._init_riwayat()
-        self._init_reciters()
-        self._init_radios()
-        self._init_tafasir()
+    def _ensure_loaded(self, locale: str, data: _LocaleData = None) -> None:
+        """Ensure data for a locale is loaded from the API."""
+        if data is None:
+            data = self._get_locale_data(locale)
+        self._init_suras(locale, data)
+        self._init_riwayat(locale, data)
+        self._init_reciters(locale, data)
+        self._init_radios(locale, data)
+        self._init_tafasir(locale, data)
 
     def _is_cache_valid(self, timestamp: float) -> bool:
         if timestamp == 0.0:
@@ -129,45 +119,45 @@ class Mp3Quran:
                 continue
         self._languages_timestamp = time.time()
 
-    def _init_suras(self) -> None:
-        if self._is_cache_valid(self._suras_timestamp):
+    def _init_suras(self, locale: str, data: _LocaleData) -> None:
+        if self._is_cache_valid(data.suras_ts):
             return
-        url = self._get_lang_url('suwar')
-        data = self._fetch(url)
-        if data is None:
+        url = _API_BASE + 'suwar?language=' + locale
+        resp = self._fetch(url)
+        if resp is None:
             return
-        for sura in data.get('suwar', []):
+        for sura in resp.get('suwar', []):
             try:
                 name = sura['name'].strip()
-                self.suras_name[int(sura['id'])] = name
+                data.suras_name[int(sura['id'])] = name
             except (KeyError, ValueError) as e:
                 logger.warning('Mp3Quran: Skipping invalid surah entry: %s', e)
                 continue
-        self._suras_timestamp = time.time()
+        data.suras_ts = time.time()
 
-    def _init_riwayat(self) -> None:
-        if self._is_cache_valid(self._riwayat_timestamp):
+    def _init_riwayat(self, locale: str, data: _LocaleData) -> None:
+        if self._is_cache_valid(data.riwayat_ts):
             return
-        url = self._get_lang_url('riwayat')
-        data = self._fetch(url)
-        if data is None:
+        url = _API_BASE + 'riwayat?language=' + locale
+        resp = self._fetch(url)
+        if resp is None:
             return
-        for r in data.get('riwayat', []):
+        for r in resp.get('riwayat', []):
             try:
-                self.riwayat[int(r['id'])] = r['name']
+                data.riwayat[int(r['id'])] = r['name']
             except (KeyError, ValueError) as e:
                 logger.warning('Mp3Quran: Skipping invalid riwayat entry: %s', e)
                 continue
-        self._riwayat_timestamp = time.time()
+        data.riwayat_ts = time.time()
 
-    def _init_reciters(self) -> None:
-        if self._is_cache_valid(self._reciters_timestamp):
+    def _init_reciters(self, locale: str, data: _LocaleData) -> None:
+        if self._is_cache_valid(data.reciters_ts):
             return
-        url = self._get_lang_url('reciters')
-        data = self._fetch(url)
-        if data is None:
+        url = _API_BASE + 'reciters?language=' + locale
+        resp = self._fetch(url)
+        if resp is None:
             return
-        for reciter in data.get('reciters', []):
+        for reciter in resp.get('reciters', []):
             try:
                 moshaf_list = []
                 has_valid_moshaf = False
@@ -190,7 +180,7 @@ class Mp3Quran:
                 if not has_valid_moshaf:
                     logger.warning('Mp3Quran: Skipping reciter with no valid moshaf: %s', reciter.get('name', '?'))
                     continue
-                self.reciters[int(reciter['id'])] = {
+                data.reciters[int(reciter['id'])] = {
                     'name': reciter['name'],
                     'letter': reciter.get('letter', ''),
                     'date': reciter.get('date', ''),
@@ -199,43 +189,43 @@ class Mp3Quran:
             except (KeyError, ValueError) as e:
                 logger.warning('Mp3Quran: Skipping invalid reciter entry: %s', e)
                 continue
-        self._reciters_timestamp = time.time()
+        data.reciters_ts = time.time()
 
-    def _init_tafasir(self) -> None:
-        if self._is_cache_valid(self._tafasir_timestamp):
+    def _init_tafasir(self, locale: str, data: _LocaleData) -> None:
+        if self._is_cache_valid(data.tafasir_ts):
             return
-        url = self._get_lang_url('tafasir')
-        data = self._fetch(url)
-        if data is None:
+        url = _API_BASE + 'tafasir?language=' + locale
+        resp = self._fetch(url)
+        if resp is None:
             return
-        for t in data.get('tafasir', []):
+        for t in resp.get('tafasir', []):
             try:
-                self.tafasir[int(t['id'])] = {
+                data.tafasir[int(t['id'])] = {
                     'name': t['name'],
                     'url': t['url'],
                 }
             except (KeyError, ValueError) as e:
                 logger.warning('Mp3Quran: Skipping invalid tafsir entry: %s', e)
                 continue
-        self._tafasir_timestamp = time.time()
+        data.tafasir_ts = time.time()
 
-    def _init_radios(self) -> None:
-        if self._is_cache_valid(self._radios_timestamp):
+    def _init_radios(self, locale: str, data: _LocaleData) -> None:
+        if self._is_cache_valid(data.radios_ts):
             return
-        url = self._get_lang_url('radios')
-        data = self._fetch(url)
-        if data is None:
+        url = _API_BASE + 'radios?language=' + locale
+        resp = self._fetch(url)
+        if resp is None:
             return
-        for radio in data.get('radios', []):
+        for radio in resp.get('radios', []):
             try:
-                self.radios[int(radio['id'])] = {
+                data.radios[int(radio['id'])] = {
                     'name': radio['name'],
                     'url': radio['url'],
                 }
             except (KeyError, ValueError) as e:
                 logger.warning('Mp3Quran: Skipping invalid radio entry: %s', e)
                 continue
-        self._radios_timestamp = time.time()
+        data.radios_ts = time.time()
 
     def translate_uri(self, uri: str) -> Optional[str]:
         """Translate a mopidy URI to a streaming URL."""
@@ -245,16 +235,17 @@ class Mp3Quran:
             return None
 
         try:
-            variant = parsed[0]
-            if variant == 'reciter' and len(parsed) == 4:
-                reciter_id = int(parsed[1])
-                moshaf_id = int(parsed[2])
-                sura_no = int(parsed[3])
-            elif variant == 'radio' and len(parsed) == 2:
-                radio_id = int(parsed[1])
-            elif variant == 'tafsir_audio' and len(parsed) == 3:
-                tafsir_id = int(parsed[1])
-                audio_id = int(parsed[2])
+            locale = parsed[0]
+            variant = parsed[1]
+            if variant == 'reciter' and len(parsed) == 5:
+                reciter_id = int(parsed[2])
+                moshaf_id = int(parsed[3])
+                sura_no = int(parsed[4])
+            elif variant == 'radio' and len(parsed) == 3:
+                radio_id = int(parsed[2])
+            elif variant == 'tafsir_audio' and len(parsed) == 4:
+                tafsir_id = int(parsed[2])
+                audio_id = int(parsed[3])
             else:
                 logger.debug('Invalid uri format: %s', uri)
                 return None
@@ -262,22 +253,26 @@ class Mp3Quran:
             logger.debug('Invalid uri format %s: %s', uri, e)
             return None
 
+        data = self._get_locale_data(locale)
+
         if variant == 'reciter':
-            if reciter_id not in self.reciters:
+            self._init_reciters(locale, data)
+            if reciter_id not in data.reciters:
                 logger.debug('Reciter ID %d not found', reciter_id)
                 return None
-            for moshaf in self.reciters[reciter_id]['moshaf']:
+            for moshaf in data.reciters[reciter_id]['moshaf']:
                 if moshaf['id'] == moshaf_id and sura_no in moshaf['surah_list']:
                     return moshaf['server'].rstrip('/') + '/%03d' % sura_no + '.mp3'
             logger.debug('Moshaf %d or surah %d not found for reciter %d', moshaf_id, sura_no, reciter_id)
             return None
         elif variant == 'radio':
-            if radio_id in self.radios:
-                return self.radios[radio_id]['url']
+            self._init_radios(locale, data)
+            if radio_id in data.radios:
+                return data.radios[radio_id]['url']
             logger.debug('Radio ID %d not found', radio_id)
             return None
         elif variant == 'tafsir_audio':
-            url = self.translate_tafsir_uri(tafsir_id, audio_id)
+            url = self.translate_tafsir_uri(tafsir_id, audio_id, locale=locale)
             if url:
                 return url
             logger.debug('Tafsir audio %d/%d not found', tafsir_id, audio_id)
@@ -286,132 +281,79 @@ class Mp3Quran:
         logger.debug('Could not translate uri: %s', uri)
         return None
 
-    def get_riwayat(self) -> List[Ref]:
-        results = []
-        for riwaya_id, name in self.riwayat.items():
-            reciters_with_riwaya = [
-                (rid, r) for rid, r in self.reciters.items()
-                if any(m['rewaya_id'] == riwaya_id for m in r['moshaf'])
-            ]
-            if reciters_with_riwaya:
-                results.append(Ref.directory(
-                    uri='mp3quran:riwaya:%d' % riwaya_id, name=name,
-                ))
-        return results
-
-    def riwaya_reciters(self, riwaya_id: int) -> List[Ref]:
-        results = []
-        riwaya_id = int(riwaya_id)
-        for reciter_id, reciter in self.reciters.items():
-            for moshaf in reciter['moshaf']:
-                if moshaf['rewaya_id'] == riwaya_id:
-                    results.append(
-                        Ref.directory(
-                            uri='mp3quran:moshaf:%d:%d' % (reciter_id, moshaf['id']),
-                            name='%s - %s' % (reciter['name'], moshaf['name']),
-                        )
-                    )
-                    break
-        return results
-
-    def get_tafasir(self) -> List[Ref]:
-        results = []
-        for tafsir_id, tafsir in self.tafasir.items():
-            results.append(Ref.directory(
-                uri='mp3quran:tafsir:%d' % tafsir_id, name=tafsir['name'],
-            ))
-        return results
-
-    def tafsir_audio(self, tafsir_id: int) -> List[Ref]:
-        results = []
-        tafsir_id = int(tafsir_id)
-        if tafsir_id not in self.tafasir:
-            logger.warning('Mp3Quran: Tafsir ID %d not found', tafsir_id)
-            return results
-        url = _API_BASE + 'tafsir?tafsir=%d&language=%s' % (tafsir_id, self._current_locale)
-        data = self._fetch(url)
-        if data is None:
-            return results
-        tafsir_data = data.get('tafasir', {})
-        for audio in tafsir_data.get('soar', []):
-            try:
-                results.append(Ref.track(
-                    uri='mp3quran:tafsir_audio:%d:%d' % (tafsir_id, int(audio['id'])),
-                    name=audio['name'],
-                ))
-            except (KeyError, ValueError) as e:
-                logger.warning('Mp3Quran: Skipping invalid tafsir audio entry: %s', e)
-                continue
-        return results
-
-    def translate_tafsir_uri(self, tafsir_id: int, audio_id: int) -> Optional[str]:
-        tafsir_id = int(tafsir_id)
-        audio_id = int(audio_id)
-        if tafsir_id not in self.tafasir:
-            return None
-        url = _API_BASE + 'tafsir?tafsir=%d&language=%s' % (tafsir_id, self._current_locale)
-        data = self._fetch(url)
-        if data is None:
-            return None
-        for audio in data.get('tafasir', {}).get('soar', []):
-            if int(audio['id']) == audio_id:
-                return audio['url']
-        return None
-
     def get_languages(self) -> List[Ref]:
         results = []
         for lang in self.languages:
             results.append(Ref.directory(
-                uri='mp3quran:language:' + lang['locale'],
+                uri='mp3quran:%s:language' % lang['locale'],
                 name=lang['name'],
             ))
         return results
 
-    def get_radios(self) -> List[Ref]:
+    def get_language_content(self, locale: str) -> List[Ref]:
+        """Get the content category directories for a language."""
+        resolved = self.resolve_language(locale)
         results = []
-        for radio_id, radio in self.radios.items():
-            results.append(Ref.track(uri='mp3quran:radio:%d' % radio_id, name=radio['name']))
+        results.append(Ref.directory(uri='mp3quran:%s:reciters' % resolved, name='Reciters'))
+        results.append(Ref.directory(uri='mp3quran:%s:riwayat' % resolved, name='Riwayat'))
+        results.append(Ref.directory(uri='mp3quran:%s:radios' % resolved, name='Radios'))
+        results.append(Ref.directory(uri='mp3quran:%s:tafasir' % resolved, name='Tafasir'))
         return results
 
-    def get_reciters(self) -> List[Ref]:
+    def get_radios(self, locale: str) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_radios(locale, data)
         results = []
-        for reciter_id, reciter in self.reciters.items():
-            results.append(Ref.directory(uri='mp3quran:reciter:%d' % reciter_id, name=reciter['name']))
+        for radio_id, radio in data.radios.items():
+            results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
         return results
 
-    def reciter_moshaf(self, reciter_id: int) -> List[Ref]:
+    def get_reciters(self, locale: str) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_reciters(locale, data)
+        results = []
+        for reciter_id, reciter in data.reciters.items():
+            results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
+        return results
+
+    def reciter_moshaf(self, locale: str, reciter_id: int) -> List[Ref]:
         """Return moshaf (recitation versions) for a reciter."""
+        data = self._get_locale_data(locale)
+        self._init_reciters(locale, data)
         results = []
         reciter_id = int(reciter_id)
-        if reciter_id not in self.reciters:
+        if reciter_id not in data.reciters:
             logger.warning('Mp3Quran: Reciter ID %d not found', reciter_id)
             return results
-        reciter = self.reciters[reciter_id]
+        reciter = data.reciters[reciter_id]
         for moshaf in reciter['moshaf']:
             results.append(
                 Ref.directory(
-                    uri='mp3quran:moshaf:%d:%d' % (reciter_id, moshaf['id']),
+                    uri='mp3quran:%s:moshaf:%d:%d' % (locale, reciter_id, moshaf['id']),
                     name=moshaf['name'],
                 )
             )
         return results
 
-    def moshaf_suras(self, reciter_id: int, moshaf_id: int) -> List[Ref]:
+    def moshaf_suras(self, locale: str, reciter_id: int, moshaf_id: int) -> List[Ref]:
         """Return surahs for a specific moshaf of a reciter."""
+        data = self._get_locale_data(locale)
+        self._init_reciters(locale, data)
+        self._init_suras(locale, data)
         results = []
         reciter_id = int(reciter_id)
         moshaf_id = int(moshaf_id)
-        if reciter_id not in self.reciters:
+        if reciter_id not in data.reciters:
             logger.warning('Mp3Quran: Reciter ID %d not found', reciter_id)
             return results
-        reciter = self.reciters[reciter_id]
+        reciter = data.reciters[reciter_id]
         for moshaf in reciter['moshaf']:
             if moshaf['id'] == moshaf_id:
                 for sura_no in moshaf['surah_list']:
-                    sura_name = self.suras_name.get(sura_no, 'Surah %d' % sura_no)
+                    sura_name = data.suras_name.get(sura_no, 'Surah %d' % sura_no)
                     results.append(
                         Ref.track(
-                            uri='mp3quran:reciter:%d:%d:%d' % (reciter_id, moshaf_id, sura_no),
+                            uri='mp3quran:%s:reciter:%d:%d:%d' % (locale, reciter_id, moshaf_id, sura_no),
                             name=sura_name,
                         )
                     )
@@ -419,40 +361,114 @@ class Mp3Quran:
         logger.warning('Mp3Quran: Moshaf ID %d not found for reciter %d', moshaf_id, reciter_id)
         return results
 
-    def search(self, query: str) -> List[Ref]:
+    def get_riwayat(self, locale: str) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_riwayat(locale, data)
+        self._init_reciters(locale, data)
+        results = []
+        for riwaya_id, name in data.riwayat.items():
+            reciters_with_riwaya = [
+                (rid, r) for rid, r in data.reciters.items()
+                if any(m['rewaya_id'] == riwaya_id for m in r['moshaf'])
+            ]
+            if reciters_with_riwaya:
+                results.append(Ref.directory(
+                    uri='mp3quran:%s:riwaya:%d' % (locale, riwaya_id), name=name,
+                ))
+        return results
+
+    def riwaya_reciters(self, locale: str, riwaya_id: int) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_riwayat(locale, data)
+        self._init_reciters(locale, data)
+        results = []
+        riwaya_id = int(riwaya_id)
+        for reciter_id, reciter in data.reciters.items():
+            for moshaf in reciter['moshaf']:
+                if moshaf['rewaya_id'] == riwaya_id:
+                    results.append(
+                        Ref.directory(
+                            uri='mp3quran:%s:moshaf:%d:%d' % (locale, reciter_id, moshaf['id']),
+                            name='%s - %s' % (reciter['name'], moshaf['name']),
+                        )
+                    )
+                    break
+        return results
+
+    def get_tafasir(self, locale: str) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_tafasir(locale, data)
+        results = []
+        for tafsir_id, tafsir in data.tafasir.items():
+            results.append(Ref.directory(
+                uri='mp3quran:%s:tafsir:%d' % (locale, tafsir_id), name=tafsir['name'],
+            ))
+        return results
+
+    def tafsir_audio(self, locale: str, tafsir_id: int) -> List[Ref]:
+        data = self._get_locale_data(locale)
+        self._init_tafasir(locale, data)
+        results = []
+        tafsir_id = int(tafsir_id)
+        if tafsir_id not in data.tafasir:
+            logger.warning('Mp3Quran: Tafsir ID %d not found', tafsir_id)
+            return results
+        url = _API_BASE + 'tafsir?tafsir=%d&language=%s' % (tafsir_id, locale)
+        resp = self._fetch(url)
+        if resp is None:
+            return results
+        tafsir_data = resp.get('tafasir', {})
+        for audio in tafsir_data.get('soar', []):
+            try:
+                results.append(Ref.track(
+                    uri='mp3quran:%s:tafsir_audio:%d:%d' % (locale, tafsir_id, int(audio['id'])),
+                    name=audio['name'],
+                ))
+            except (KeyError, ValueError) as e:
+                logger.warning('Mp3Quran: Skipping invalid tafsir audio entry: %s', e)
+                continue
+        return results
+
+    def translate_tafsir_uri(self, tafsir_id: int, audio_id: int, locale: str = None) -> Optional[str]:
+        tafsir_id = int(tafsir_id)
+        audio_id = int(audio_id)
+        lang = locale or _DEFAULT_LOCALE
+        data = self._get_locale_data(lang)
+        self._init_tafasir(lang, data)
+        if tafsir_id not in data.tafasir:
+            return None
+        url = _API_BASE + 'tafsir?tafsir=%d&language=%s' % (tafsir_id, lang)
+        resp = self._fetch(url)
+        if resp is None:
+            return None
+        for audio in resp.get('tafasir', {}).get('soar', []):
+            if int(audio['id']) == audio_id:
+                return audio['url']
+        return None
+
+    def search(self, locale: str, query: str) -> List[Ref]:
         """Search reciters and radios by name (case-insensitive)."""
+        data = self._get_locale_data(locale)
+        self._init_reciters(locale, data)
+        self._init_radios(locale, data)
         results = []
         query_lower = query.lower()
-        for reciter_id, reciter in self.reciters.items():
+        for reciter_id, reciter in data.reciters.items():
             if query_lower in reciter['name'].lower():
-                results.append(Ref.directory(uri='mp3quran:reciter:%d' % reciter_id, name=reciter['name']))
+                results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
             else:
                 for moshaf in reciter['moshaf']:
                     if query_lower in moshaf['name'].lower():
-                        results.append(Ref.directory(uri='mp3quran:reciter:%d' % reciter_id, name=reciter['name']))
+                        results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
                         break
-        for radio_id, radio in self.radios.items():
+        for radio_id, radio in data.radios.items():
             if query_lower in radio['name'].lower():
-                results.append(Ref.track(uri='mp3quran:radio:%d' % radio_id, name=radio['name']))
+                results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
         return results
 
     def refresh(self) -> None:
         """Force re-fetch all data from the API."""
         self.languages = []
-        self.reciters = {}
-        self.radios = {}
-        self.suras_name = {}
-        self.riwayat = {}
-        self.tafasir = {}
+        self._locales.clear()
         self._languages_timestamp = 0.0
-        self._reciters_timestamp = 0.0
-        self._radios_timestamp = 0.0
-        self._suras_timestamp = 0.0
-        self._riwayat_timestamp = 0.0
-        self._tafasir_timestamp = 0.0
         self._init_languages()
-        self._init_suras()
-        self._init_riwayat()
-        self._init_reciters()
-        self._init_radios()
-        self._init_tafasir()
