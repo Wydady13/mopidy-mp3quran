@@ -44,7 +44,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         mp3quran_config = config.get('mp3quran', {})
         self.mp3quran = client.Mp3Quran(
             session=self.session,
-            language=mp3quran_config.get('language', 'English'),
+            language=mp3quran_config.get('language', client._DEFAULT_LANGUAGE),
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
         )
@@ -64,6 +64,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         parsed = uri.split(':')
         variant = parsed[1] if len(parsed) >= 2 else None
         identifier = parsed[2] if len(parsed) >= 3 else None
+        extra = parsed[3] if len(parsed) >= 4 else None
 
         if variant == 'root':
             results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
@@ -72,14 +73,16 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         elif variant == 'languages':
             results = self.backend.mp3quran.get_languages()
         elif variant == 'language' and identifier:
-            self.backend.mp3quran.set_language(client._language_display(identifier))
+            self.backend.mp3quran.set_language(identifier)
             results = self.backend.mp3quran.get_reciters()
         elif variant == 'radios':
             results = self.backend.mp3quran.get_radios()
         elif variant == 'reciters':
             results = self.backend.mp3quran.get_reciters()
         elif variant == 'reciter' and identifier:
-            results = self.backend.mp3quran.reciter_suras(identifier)
+            results = self.backend.mp3quran.reciter_moshaf(identifier)
+        elif variant == 'moshaf' and identifier and extra:
+            results = self.backend.mp3quran.moshaf_suras(int(identifier), int(extra))
         else:
             logger.debug('Unknown uri: %s at library.browse', uri)
 
@@ -100,34 +103,48 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
         try:
             variant = parsed_uri[0]
-            identifier = int(parsed_uri[1])
+            if variant == 'reciter':
+                if len(parsed_uri) != 4:
+                    logger.debug('Invalid reciter uri format: %s', uri)
+                    return tracks
+                reciter_id = int(parsed_uri[1])
+                moshaf_id = int(parsed_uri[2])
+                sura_no = int(parsed_uri[3])
+            elif variant == 'radio':
+                radio_id = int(parsed_uri[1])
+            else:
+                logger.debug('Unknown variant in uri: %s', uri)
+                return tracks
         except (ValueError, IndexError) as e:
             logger.debug('Invalid uri %s: %s', uri, e)
             return tracks
 
-        sura = None
-        if len(parsed_uri) == 3:
-            try:
-                sura_no = int(parsed_uri[2])
-                sura = self.backend.mp3quran.suras_name.get(sura_no)
-            except ValueError:
-                logger.debug('Invalid sura number in uri: %s', uri)
+        if variant == 'reciter':
+            if reciter_id not in self.backend.mp3quran.reciters:
+                logger.debug('Reciter ID %d not found', reciter_id)
                 return tracks
-
-        if variant == 'reciter' and identifier in self.backend.mp3quran.reciters and sura:
-            reciter = self.backend.mp3quran.reciters[identifier]
+            reciter = self.backend.mp3quran.reciters[reciter_id]
+            moshaf_found = None
+            for moshaf in reciter['moshaf']:
+                if moshaf['id'] == moshaf_id:
+                    moshaf_found = moshaf
+                    break
+            if moshaf_found is None:
+                logger.debug('Moshaf ID %d not found for reciter %d', moshaf_id, reciter_id)
+                return tracks
+            sura_name = self.backend.mp3quran.suras_name.get(sura_no, 'Surah %d' % sura_no)
             artists = [Artist(name=reciter['name'])]
-            album = Album(name=reciter['rewaya'])
-            track_no = int(parsed_uri[2])
+            album = Album(name=moshaf_found['name'])
             tracks.append(Track(
-                uri=uri, name=sura,
-                artists=artists, album=album, track_no=track_no,
+                uri=uri, name=sura_name,
+                artists=artists, album=album, track_no=sura_no,
             ))
-        elif variant == 'radio' and 0 <= identifier < len(self.backend.mp3quran.radios):
-            radio = self.backend.mp3quran.radios[identifier]
-            tracks.append(Track(uri=uri, name=radio['name']))
-        else:
-            logger.debug('Unknown uri: %s', uri)
+        elif variant == 'radio':
+            if radio_id in self.backend.mp3quran.radios:
+                radio = self.backend.mp3quran.radios[radio_id]
+                tracks.append(Track(uri=uri, name=radio['name']))
+            else:
+                logger.debug('Radio ID %d not found', radio_id)
 
         return tracks
 

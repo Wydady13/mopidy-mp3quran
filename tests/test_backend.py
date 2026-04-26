@@ -10,51 +10,79 @@ from mopidy_mp3quran.backend import (
     Mp3QuranPlaybackProvider,
     get_requests_session,
 )
-from mopidy_mp3quran.client import Mp3Quran, _API_BASE, _RADIO_API, _LANGUAGES_API
+from mopidy_mp3quran.client import Mp3Quran, _API_BASE
 
 
 SURAS_RESPONSE = {
-    "Suras_Name": [
-        {"id": "1", "name": "Al-Fatiha"},
-        {"id": "2", "name": "Al-Baqara"},
-        {"id": "3", "name": "Aal-Imran"},
+    "suwar": [
+        {"id": 1, "name": "Al-Fatihah "},
+        {"id": 2, "name": "Al-Baqarah "},
+        {"id": 3, "name": "Aal Imran"},
+    ]
+}
+
+RIWAYAT_RESPONSE = {
+    "riwayat": [
+        {"id": 1, "name": "Rewayat Hafs A'n Assem"},
     ]
 }
 
 RECITERS_RESPONSE = {
     "reciters": [
         {
-            "id": "1",
+            "id": 1,
             "name": "Mishary Rashid Alafasy",
-            "Server": "https://server.example.com/mishary",
-            "suras": "1,2,3",
-            "rewaya": "Hafs",
+            "letter": "M",
+            "date": "2025-09-06T00:39:03.000000Z",
+            "moshaf": [
+                {
+                    "id": 1,
+                    "name": "Rewayat Hafs A'n Assem - Murattal",
+                    "rewaya_id": 1,
+                    "server": "https://server.example.com/mishary/",
+                    "surah_total": 3,
+                    "moshaf_type": 11,
+                    "surah_list": "1,2,3",
+                },
+            ],
         },
     ]
 }
 
 RADIOS_RESPONSE = {
-    "Radios": [
-        {"Name": "Quran Radio 24/7", "URL": "https://stream.example.com/radio1"},
+    "radios": [
+        {"id": 1, "name": "Quran Radio 24/7", "url": "https://stream.example.com/radio1"},
     ]
 }
 
 LANGUAGES_RESPONSE = {
-    "mp3quran": [
+    "language": [
         {
             "id": "1",
-            "language": "_arabic",
-            "json": "http://mp3quran.net/api/_arabic.json",
-            "sura_name": "http://mp3quran.net/api/_arabic_sura.json",
+            "language": "Arabic",
+            "native": "العربية",
+            "locale": "ar",
+            "surah": "https://www.mp3quran.net/api/v3/suwar?language=ar",
+            "rewayah": "https://www.mp3quran.net/api/v3/riwayat?language=ar",
+            "reciters": "https://www.mp3quran.net/api/v3/reciters?language=ar",
+            "radios": "https://www.mp3quran.net/api/v3/radios?language=ar",
         },
         {
             "id": "2",
-            "language": "_english",
-            "json": "http://mp3quran.net/api/_english.json",
-            "sura_name": "http://mp3quran.net/api/_english_sura.json",
+            "language": "English",
+            "native": "English",
+            "locale": "eng",
+            "surah": "https://www.mp3quran.net/api/v3/suwar?language=eng",
+            "rewayah": "https://www.mp3quran.net/api/v3/riwayat?language=eng",
+            "reciters": "https://www.mp3quran.net/api/v3/reciters?language=eng",
+            "radios": "https://www.mp3quran.net/api/v3/radios?language=eng",
         },
     ]
 }
+
+
+def _api_url(path):
+    return _API_BASE + path
 
 
 @pytest.fixture
@@ -63,7 +91,7 @@ def mock_config():
         "proxy": {"hostname": "", "port": "", "username": "", "password": ""},
         "mp3quran": {
             "enabled": True,
-            "language": "English",
+            "language": "eng",
             "cache_ttl": 3600,
             "timeout": 10,
         },
@@ -80,25 +108,31 @@ def mocked_api():
     with responses.mock:
         responses.add(
             responses.GET,
-            _LANGUAGES_API,
+            _api_url('languages'),
             json=LANGUAGES_RESPONSE,
             status=200,
         )
         responses.add(
             responses.GET,
-            _API_BASE + "_english_sura.json",
+            _api_url('suwar?language=eng'),
             json=SURAS_RESPONSE,
             status=200,
         )
         responses.add(
             responses.GET,
-            _API_BASE + "_english.json",
+            _api_url('riwayat?language=eng'),
+            json=RIWAYAT_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            _api_url('reciters?language=eng'),
             json=RECITERS_RESPONSE,
             status=200,
         )
         responses.add(
             responses.GET,
-            _RADIO_API,
+            _api_url('radios?language=eng'),
             json=RADIOS_RESPONSE,
             status=200,
         )
@@ -178,13 +212,13 @@ class TestMp3QuranLibraryProvider:
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")
         assert len(results) == 2
-        assert results[0].uri == "mp3quran:language:_arabic"
+        assert results[0].uri == "mp3quran:language:ar"
         assert results[0].name == "Arabic"
-        assert results[1].uri == "mp3quran:language:_english"
+        assert results[1].uri == "mp3quran:language:eng"
         assert results[1].name == "English"
 
     def test_browse_language_switches_and_shows_reciters(self, library):
-        results = library.browse("mp3quran:language:_english")
+        results = library.browse("mp3quran:language:eng")
         assert len(results) == 1
         assert results[0].uri == "mp3quran:reciter:1"
         assert results[0].type == Ref.DIRECTORY
@@ -195,17 +229,24 @@ class TestMp3QuranLibraryProvider:
         assert results[0].uri == "mp3quran:reciter:1"
         assert results[0].type == Ref.DIRECTORY
 
-    def test_browse_reciter(self, library):
+    def test_browse_reciter_shows_moshaf(self, library):
         results = library.browse("mp3quran:reciter:1")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:moshaf:1:1"
+        assert results[0].name == "Rewayat Hafs A'n Assem - Murattal"
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_moshaf_shows_suras(self, library):
+        results = library.browse("mp3quran:moshaf:1:1")
         assert len(results) == 3
-        assert results[0].uri == "mp3quran:reciter:1:1"
-        assert results[0].name == "Al-Fatiha"
+        assert results[0].uri == "mp3quran:reciter:1:1:1"
+        assert results[0].name == "Al-Fatihah"
         assert results[0].type == Ref.TRACK
 
     def test_browse_radios(self, library):
         results = library.browse("mp3quran:radios")
         assert len(results) == 1
-        assert results[0].uri == "mp3quran:radio:0"
+        assert results[0].uri == "mp3quran:radio:1"
         assert results[0].type == Ref.TRACK
 
     def test_browse_unknown_uri(self, library):
@@ -213,19 +254,19 @@ class TestMp3QuranLibraryProvider:
         assert results == []
 
     def test_lookup_reciter_surah(self, library):
-        tracks = library.lookup("mp3quran:reciter:1:2")
+        tracks = library.lookup("mp3quran:reciter:1:1:2")
         assert len(tracks) == 1
         track = tracks[0]
-        assert track.uri == "mp3quran:reciter:1:2"
-        assert track.name == "Al-Baqara"
+        assert track.uri == "mp3quran:reciter:1:1:2"
+        assert track.name == "Al-Baqarah"
         assert any(a.name == "Mishary Rashid Alafasy" for a in track.artists)
-        assert track.album.name == "Hafs"
+        assert track.album.name == "Rewayat Hafs A'n Assem - Murattal"
         assert track.track_no == 2
 
     def test_lookup_radio(self, library):
-        tracks = library.lookup("mp3quran:radio:0")
+        tracks = library.lookup("mp3quran:radio:1")
         assert len(tracks) == 1
-        assert tracks[0].uri == "mp3quran:radio:0"
+        assert tracks[0].uri == "mp3quran:radio:1"
         assert tracks[0].name == "Quran Radio 24/7"
 
     def test_lookup_invalid_uri(self, library):
@@ -237,7 +278,7 @@ class TestMp3QuranLibraryProvider:
         assert tracks == []
 
     def test_lookup_nonexistent_reciter(self, library):
-        tracks = library.lookup("mp3quran:reciter:999:1")
+        tracks = library.lookup("mp3quran:reciter:999:1:1")
         assert tracks == []
 
     def test_lookup_nonexistent_radio(self, library):
@@ -297,11 +338,11 @@ class TestMp3QuranLibrarySearch:
 class TestMp3QuranPlaybackProvider:
 
     def test_translate_uri_reciter(self, playback):
-        url = playback.translate_uri("mp3quran:reciter:1:2")
+        url = playback.translate_uri("mp3quran:reciter:1:1:2")
         assert url == "https://server.example.com/mishary/002.mp3"
 
     def test_translate_uri_radio(self, playback):
-        url = playback.translate_uri("mp3quran:radio:0")
+        url = playback.translate_uri("mp3quran:radio:1")
         assert url == "https://stream.example.com/radio1"
 
     def test_translate_uri_invalid(self, playback):
@@ -309,7 +350,7 @@ class TestMp3QuranPlaybackProvider:
         assert url is None
 
     def test_is_live_radio(self, playback):
-        assert playback.is_live("mp3quran:radio:0") is True
+        assert playback.is_live("mp3quran:radio:1") is True
 
     def test_is_live_reciter(self, playback):
-        assert playback.is_live("mp3quran:reciter:1:2") is False
+        assert playback.is_live("mp3quran:reciter:1:1:2") is False

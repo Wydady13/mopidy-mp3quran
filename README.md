@@ -35,7 +35,33 @@ timeout = 10
 
 **Configuration options:**
 
-- **language** - API language (default: `English`). Controls the language of reciter and surah names.
+- **language** - API language (default: `English`). Controls the language of reciter and surah names. Accepts both the full name (e.g. `English`, `arabic`) and the locale code (e.g. `eng`, `ar`), case-insensitive.
+
+**Supported languages:**
+
+| Locale | Language | Native |
+|--------|----------|--------|
+| `ar` | Arabic | العربية |
+| `eng` | English | English |
+| `fr` | French | Français |
+| `ru` | Russian | Русский |
+| `de` | German | Deutsch |
+| `es` | Spanish | Español |
+| `tr` | Turkish | Türkçe |
+| `cn` | Chinese | 中文 |
+| `th` | Thai | ไทย |
+| `ur` | Urdu | اردو |
+| `bn` | Bengali | বাংলা |
+| `bs` | Bosnian | Bosanski |
+| `ug` | Uyghur | ئۇيغۇرچە |
+| `fa` | Persian | فارسی |
+| `tg` | Tajik (Cyrillic) | тоҷикӣ |
+| `ml` | Malayalam | മലയാളം |
+| `tl` | Tagalog | Tagalog |
+| `id` | Indonesian | Indonesia |
+| `pt` | Portuguese | Português |
+| `ha` | Hausa | Hausa |
+| `sw` | Swahili | Kiswahili |
 - **cache_ttl** - Cache time-to-live in seconds (default: `3600`). Set to `0` to disable caching.
 - **timeout** - HTTP request timeout in seconds (default: `10`).
 
@@ -44,10 +70,12 @@ timeout = 10
 Browse the library tree:
 
 1. **Mp3Quran** (root) — top-level entry
-2. **Reciters** — list of all available reciters
-3. **Radios** — list of all radio stations
-4. Select a reciter to see their available surahs
-5. Select a surah to play it
+2. **Languages** — switch to a different language
+3. **Reciters** — list of all available reciters
+4. **Radios** — list of all radio stations
+5. Select a reciter to see their recitation versions (Moshaf, e.g. Hafs, Warsh)
+6. Select a moshaf to see its available surahs
+7. Select a surah to play it
 
 Use search to find reciters or radio stations by name.
 
@@ -76,11 +104,15 @@ pytest
 
 ### v0.2.0 (unreleased)
 
+- Migrate to mp3quran.net v3 REST API
+- Support multiple moshaf (recitation versions) per reciter
+- Add riwayat (narration types) support
+- Language config now accepts both full names and locale codes (case-insensitive)
 - Migrate to `pyproject.toml` with `src` layout
 - Migrate to Mopidy 4.x API (search on LibraryProvider)
 - Fix proxy configuration bug (config key)
 - Fix search dropping reciter results
-- Add unit test suite (76 tests)
+- Add unit test suite (102 tests)
 - Remove dead `parse_uri()` function
 - Migrate to Python 3
 - Add error handling for all API calls
