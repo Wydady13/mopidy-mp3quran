@@ -270,3 +270,9 @@ class TestMp3QuranPlaybackProvider:
     def test_translate_uri_invalid(self, playback):
         url = playback.translate_uri("mp3quran:invalid")
         assert url is None
+
+    def test_is_live_radio(self, playback):
+        assert playback.is_live("mp3quran:radio:0") is True
+
+    def test_is_live_reciter(self, playback):
+        assert playback.is_live("mp3quran:reciter:1:2") is False

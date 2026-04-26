@@ -172,3 +172,6 @@ class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
         else:
             logger.debug('URI could not be translated: %s', uri)
             return None
+
+    def is_live(self, uri: str) -> bool:
+        return uri.startswith('mp3quran:radio:')
