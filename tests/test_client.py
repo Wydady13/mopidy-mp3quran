@@ -4,7 +4,10 @@ from unittest import mock
 import pytest
 import responses
 
-from mopidy_mp3quran.client import Mp3Quran, _API_BASE, _RADIO_API, _DEFAULT_CACHE_TTL
+from mopidy_mp3quran.client import (
+    Mp3Quran, _API_BASE, _RADIO_API, _LANGUAGES_API, _DEFAULT_CACHE_TTL,
+    _language_code, _language_display, _LANGUAGE_DISPLAY_OVERRIDES,
+)
 
 
 SURAS_RESPONSE = {
@@ -12,6 +15,13 @@ SURAS_RESPONSE = {
         {"id": "1", "name": "Al-Fatiha"},
         {"id": "2", "name": "Al-Baqara"},
         {"id": "3", "name": "Aal-Imran"},
+    ]
+}
+
+SURAS_RESPONSE_DIRTY = {
+    "Suras_Name": [
+        {"id": "1", "name": "Al-Fatiha\r\n"},
+        {"id": "2", "name": "Al-Baqara\r\n"},
     ]
 }
 
@@ -41,11 +51,40 @@ RADIOS_RESPONSE = {
     ]
 }
 
+LANGUAGES_RESPONSE = {
+    "mp3quran": [
+        {
+            "id": "1",
+            "language": "_arabic",
+            "json": "http://mp3quran.net/api/_arabic.json",
+            "sura_name": "http://mp3quran.net/api/_arabic_sura.json",
+        },
+        {
+            "id": "2",
+            "language": "_english",
+            "json": "http://mp3quran.net/api/_english.json",
+            "sura_name": "http://mp3quran.net/api/_english_sura.json",
+        },
+        {
+            "id": "3",
+            "language": "_france",
+            "json": "http://mp3quran.net/api/_france.json",
+            "sura_name": "http://mp3quran.net/api/_france_sura.json",
+        },
+    ]
+}
+
 
 @pytest.fixture
 def mocked_api():
     """Mock all mp3quran.net API endpoints."""
     with responses.mock:
+        responses.add(
+            responses.GET,
+            _LANGUAGES_API,
+            json=LANGUAGES_RESPONSE,
+            status=200,
+        )
         responses.add(
             responses.GET,
             _API_BASE + "_english_sura.json",
@@ -73,6 +112,42 @@ def client(mocked_api):
     return Mp3Quran(language="English", cache_ttl=3600, timeout=10)
 
 
+class TestLanguageHelpers:
+
+    def test_language_code(self):
+        assert _language_code("English") == "_english"
+        assert _language_code("Arabic") == "_arabic"
+        assert _language_code("French") == "_french"
+
+    def test_language_display_auto_derived(self):
+        assert _language_display("_english") == "English"
+        assert _language_display("_arabic") == "Arabic"
+        assert _language_display("_russia") == "Russia"
+        assert _language_display("_urdu") == "Urdu"
+        assert _language_display("_portuguese") == "Portuguese"
+
+    def test_language_display_overrides(self):
+        assert _language_display("_france") == "French"
+        assert _language_display("_germany") == "German"
+        assert _language_display("_spain") == "Spanish"
+        assert _language_display("_turkey") == "Turkish"
+        assert _language_display("_tahi") == "Thai"
+        assert _language_display("_bosnia") == "Bosnian"
+        assert _language_display("_farsi") == "Farsi"
+        assert _language_display("_tajeki") == "Tajik"
+        assert _language_display("_malbari") == "Malayalam"
+        assert _language_display("_indonesia") == "Indonesian"
+
+    def test_language_display_unknown(self):
+        assert _language_display("_unknown") == "Unknown"
+
+    def test_overrides_cover_all_irregular(self):
+        for code in _LANGUAGE_DISPLAY_OVERRIDES:
+            assert _language_display(code) != code.lstrip('_').capitalize(), (
+                f"Override for {code} is unnecessary — auto-derive would match"
+            )
+
+
 class TestMp3QuranInit:
 
     def test_language_url_formation(self, mocked_api):
@@ -90,6 +165,16 @@ class TestMp3QuranInit:
         assert client.suras_name[1] == "Al-Fatiha"
         assert client.suras_name[2] == "Al-Baqara"
 
+    def test_suras_name_stripped(self):
+        with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
+            responses.add(responses.GET, _API_BASE + "_english_sura.json", json=SURAS_RESPONSE_DIRTY, status=200)
+            responses.add(responses.GET, _API_BASE + "_english.json", json=RECITERS_RESPONSE, status=200)
+            responses.add(responses.GET, _RADIO_API, json=RADIOS_RESPONSE, status=200)
+            c = Mp3Quran(language="English")
+            assert c.suras_name[1] == "Al-Fatiha"
+            assert c.suras_name[2] == "Al-Baqara"
+
     def test_reciters_loaded(self, client):
         assert 1 in client.reciters
         assert client.reciters[1]["name"] == "Mishary Rashid Alafasy"
@@ -101,6 +186,52 @@ class TestMp3QuranInit:
         assert len(client.radios) == 2
         assert client.radios[0]["name"] == "Quran Radio 24/7"
         assert client.radios[0]["url"] == "https://stream.example.com/radio1"
+
+    def test_languages_loaded(self, client):
+        assert len(client.languages) == 3
+        assert client.languages[0]["code"] == "_arabic"
+        assert client.languages[0]["name"] == "Arabic"
+        assert client.languages[1]["code"] == "_english"
+        assert client.languages[1]["name"] == "English"
+
+
+class TestMp3QuranSetLanguage:
+
+    def test_set_language_reloads_reciters(self, mocked_api):
+        responses.add(
+            responses.GET,
+            _API_BASE + "_arabic_sura.json",
+            json=SURAS_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            _API_BASE + "_arabic.json",
+            json=RECITERS_RESPONSE,
+            status=200,
+        )
+        c = Mp3Quran(language="English")
+        assert c.url == _API_BASE + "_english.json"
+        c.set_language("Arabic")
+        assert c.url == _API_BASE + "_arabic.json"
+        assert c.suras_name_url == _API_BASE + "_arabic_sura.json"
+        assert c.language == "Arabic"
+
+
+class TestMp3QuranGetLanguages:
+
+    def test_returns_directory_refs(self, client):
+        refs = client.get_languages()
+        assert len(refs) == 3
+        assert refs[0].uri == "mp3quran:language:_arabic"
+        assert refs[0].name == "Arabic"
+        assert refs[1].uri == "mp3quran:language:_english"
+        assert refs[1].name == "English"
+
+    def test_ref_type_is_directory(self, client):
+        refs = client.get_languages()
+        for ref in refs:
+            assert ref.type == "directory"
 
 
 class TestMp3QuranGetRadios:
@@ -236,8 +367,18 @@ class TestMp3QuranCaching:
 
 class TestMp3QuranErrorHandling:
 
+    def test_failed_languages_request(self):
+        with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, status=500)
+            responses.add(responses.GET, _API_BASE + "_english_sura.json", json=SURAS_RESPONSE, status=200)
+            responses.add(responses.GET, _API_BASE + "_english.json", json=RECITERS_RESPONSE, status=200)
+            responses.add(responses.GET, _RADIO_API, json=RADIOS_RESPONSE, status=200)
+            c = Mp3Quran(language="English")
+            assert c.languages == []
+
     def test_failed_suras_request(self):
         with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
             responses.add(
                 responses.GET,
                 _API_BASE + "_english_sura.json",
@@ -260,6 +401,7 @@ class TestMp3QuranErrorHandling:
 
     def test_failed_reciters_request(self):
         with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
             responses.add(
                 responses.GET,
                 _API_BASE + "_english_sura.json",
@@ -282,6 +424,7 @@ class TestMp3QuranErrorHandling:
 
     def test_failed_radios_request(self):
         with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
             responses.add(
                 responses.GET,
                 _API_BASE + "_english_sura.json",
@@ -306,10 +449,11 @@ class TestMp3QuranErrorHandling:
         bad_reciters = {
             "reciters": [
                 {"id": "1", "name": "Valid", "Server": "https://example.com", "suras": "1,2", "rewaya": "Hafs"},
-                {"id": "bad", "name": "Invalid"},  # Missing required fields
+                {"id": "bad", "name": "Invalid"},
             ]
         }
         with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
             responses.add(responses.GET, _API_BASE + "_english_sura.json", json=SURAS_RESPONSE, status=200)
             responses.add(responses.GET, _API_BASE + "_english.json", json=bad_reciters, status=200)
             responses.add(responses.GET, _RADIO_API, json=RADIOS_RESPONSE, status=200)
@@ -321,10 +465,11 @@ class TestMp3QuranErrorHandling:
         bad_radios = {
             "Radios": [
                 {"Name": "Valid Radio", "URL": "https://example.com/stream"},
-                {"Name": "Invalid Radio"},  # Missing URL
+                {"Name": "Invalid Radio"},
             ]
         }
         with responses.mock:
+            responses.add(responses.GET, _LANGUAGES_API, json=LANGUAGES_RESPONSE, status=200)
             responses.add(responses.GET, _API_BASE + "_english_sura.json", json=SURAS_RESPONSE, status=200)
             responses.add(responses.GET, _API_BASE + "_english.json", json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _RADIO_API, json=bad_radios, status=200)

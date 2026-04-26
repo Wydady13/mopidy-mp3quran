@@ -8,9 +8,38 @@ from mopidy.models import Ref
 logger = logging.getLogger(__name__)
 
 _API_BASE = 'https://www.mp3quran.net/api/'
+_LANGUAGES_API = _API_BASE + 'mp3quran.json'
 _RADIO_API = _API_BASE + 'radio/radio_en.json'
 _DEFAULT_CACHE_TTL = 3600  # 1 hour
 _DEFAULT_TIMEOUT = 10  # seconds
+
+_LANGUAGE_DISPLAY_OVERRIDES = {
+    '_france': 'French',
+    '_germany': 'German',
+    '_spain': 'Spanish',
+    '_turkey': 'Turkish',
+    '_tahi': 'Thai',
+    '_bosnia': 'Bosnian',
+    '_tajeki': 'Tajik',
+    '_malbari': 'Malayalam',
+    '_indonesia': 'Indonesian',
+}
+
+
+def _language_code(name: str) -> str:
+    """Convert a display language name like 'English' to API code like '_english'."""
+    return '_' + name[0].lower() + name[1:]
+
+
+def _language_display(code: str) -> str:
+    """Convert an API language code like '_english' to a display name like 'English'.
+
+    Irregular API codes (e.g. '_france' for French) are overridden via
+    _LANGUAGE_DISPLAY_OVERRIDES. All others are auto-derived by stripping
+    the leading underscore and capitalizing.
+    """
+    return _LANGUAGE_DISPLAY_OVERRIDES.get(code, code.lstrip('_').capitalize())
+
 
 class Mp3Quran:
     """Client for the mp3quran.net API with caching."""
@@ -23,28 +52,73 @@ class Mp3Quran:
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
         self.session = session or requests.Session()
-        self.language = '_' + language[0].lower() + language[1:]
-        self.url = _API_BASE + self.language + '.json'
-        self.suras_name_url = _API_BASE + self.language + '_sura.json'
         self.cache_ttl = cache_ttl
         self.timeout = timeout
 
+        self.languages: List[Dict[str, str]] = []
         self.reciters: Dict[int, Dict[str, Any]] = {}
         self.radios: List[Dict[str, str]] = []
         self.suras_name: Dict[int, str] = {}
 
+        self._languages_timestamp: float = 0.0
         self._reciters_timestamp: float = 0.0
         self._radios_timestamp: float = 0.0
         self._suras_timestamp: float = 0.0
 
+        self._current_language: str = ''
+
+        self._init_languages()
+        self._init_radios()
+        self.set_language(language)
+
+    @property
+    def language(self) -> str:
+        return self._current_language
+
+    def set_language(self, name: str) -> None:
+        """Switch to a different language and reload reciters/suras."""
+        code = _language_code(name)
+        self._current_language = name
+        self.url = _API_BASE + code + '.json'
+        self.suras_name_url = _API_BASE + code + '_sura.json'
+        self.reciters = {}
+        self.suras_name = {}
+        self._reciters_timestamp = 0.0
+        self._suras_timestamp = 0.0
         self._init_suras()
         self._init_reciters()
-        self._init_radios()
 
     def _is_cache_valid(self, timestamp: float) -> bool:
         if timestamp == 0.0:
             return False
         return (time.time() - timestamp) < self.cache_ttl
+
+    def _init_languages(self) -> None:
+        if self._is_cache_valid(self._languages_timestamp):
+            return
+        try:
+            response = self.session.get(_LANGUAGES_API, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+            self.languages = []
+            for lang in data.get('mp3quran', []):
+                try:
+                    code = lang['language']
+                    self.languages.append({
+                        'id': lang['id'],
+                        'code': code,
+                        'name': _language_display(code),
+                        'json': lang['json'],
+                        'sura_name': lang['sura_name'],
+                    })
+                except (KeyError, ValueError) as e:
+                    logger.warning('Mp3Quran: Skipping invalid language entry: %s', e)
+                    continue
+            self._languages_timestamp = time.time()
+        except requests.RequestException as e:
+            logger.error('Mp3Quran: Failed to fetch languages: %s', e)
+        except (KeyError, ValueError) as e:
+            logger.error('Mp3Quran: Invalid languages data: %s', e)
 
     def _init_suras(self) -> None:
         if self._is_cache_valid(self._suras_timestamp):
@@ -54,7 +128,8 @@ class Mp3Quran:
             response.raise_for_status()
             data = response.json()
             for sura in data.get('Suras_Name', []):
-                self.suras_name[int(sura['id'])] = sura['name']
+                name = sura['name'].strip()
+                self.suras_name[int(sura['id'])] = name
             self._suras_timestamp = time.time()
         except requests.RequestException as e:
             logger.error('Mp3Quran: Failed to fetch surah names: %s', e)
@@ -135,6 +210,15 @@ class Mp3Quran:
         logger.debug('Could not translate uri: %s', uri)
         return None
 
+    def get_languages(self) -> List[Ref]:
+        results = []
+        for lang in self.languages:
+            results.append(Ref.directory(
+                uri='mp3quran:language:' + lang['code'],
+                name=lang['name'],
+            ))
+        return results
+
     def get_radios(self) -> List[Ref]:
         results = []
         for k, radio in enumerate(self.radios):
@@ -180,12 +264,15 @@ class Mp3Quran:
 
     def refresh(self) -> None:
         """Force re-fetch all data from the API."""
+        self.languages = []
         self.reciters = {}
         self.radios = []
         self.suras_name = {}
+        self._languages_timestamp = 0.0
         self._reciters_timestamp = 0.0
         self._radios_timestamp = 0.0
         self._suras_timestamp = 0.0
+        self._init_languages()
         self._init_suras()
         self._init_reciters()
         self._init_radios()

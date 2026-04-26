@@ -63,11 +63,17 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         results = []
         parsed = uri.split(':')
         variant = parsed[1] if len(parsed) >= 2 else None
-        identifier = parsed[2] if len(parsed) == 3 else None
+        identifier = parsed[2] if len(parsed) >= 3 else None
 
         if variant == 'root':
+            results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
             results.append(Ref.directory(uri='mp3quran:reciters', name='Reciters'))
             results.append(Ref.directory(uri='mp3quran:radios', name='Radios'))
+        elif variant == 'languages':
+            results = self.backend.mp3quran.get_languages()
+        elif variant == 'language' and identifier:
+            self.backend.mp3quran.set_language(client._language_display(identifier))
+            results = self.backend.mp3quran.get_reciters()
         elif variant == 'radios':
             results = self.backend.mp3quran.get_radios()
         elif variant == 'reciters':

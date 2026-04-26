@@ -10,7 +10,7 @@ from mopidy_mp3quran.backend import (
     Mp3QuranPlaybackProvider,
     get_requests_session,
 )
-from mopidy_mp3quran.client import Mp3Quran, _API_BASE, _RADIO_API
+from mopidy_mp3quran.client import Mp3Quran, _API_BASE, _RADIO_API, _LANGUAGES_API
 
 
 SURAS_RESPONSE = {
@@ -39,6 +39,23 @@ RADIOS_RESPONSE = {
     ]
 }
 
+LANGUAGES_RESPONSE = {
+    "mp3quran": [
+        {
+            "id": "1",
+            "language": "_arabic",
+            "json": "http://mp3quran.net/api/_arabic.json",
+            "sura_name": "http://mp3quran.net/api/_arabic_sura.json",
+        },
+        {
+            "id": "2",
+            "language": "_english",
+            "json": "http://mp3quran.net/api/_english.json",
+            "sura_name": "http://mp3quran.net/api/_english_sura.json",
+        },
+    ]
+}
+
 
 @pytest.fixture
 def mock_config():
@@ -61,6 +78,12 @@ def mock_audio():
 @pytest.fixture
 def mocked_api():
     with responses.mock:
+        responses.add(
+            responses.GET,
+            _LANGUAGES_API,
+            json=LANGUAGES_RESPONSE,
+            status=200,
+        )
         responses.add(
             responses.GET,
             _API_BASE + "_english_sura.json",
@@ -109,7 +132,6 @@ class TestMp3QuranBackend:
         assert isinstance(backend.playback, Mp3QuranPlaybackProvider)
 
     def test_proxy_config_key(self, mock_config, mock_audio):
-        """Verify that proxy config is passed from config['proxy'], not the full config."""
         with mock.patch("mopidy_mp3quran.backend.get_requests_session") as mock_session:
             mock_session.return_value = mock.Mock()
             with mock.patch("mopidy_mp3quran.backend.client.Mp3Quran"):
@@ -148,9 +170,24 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_root(self, library):
         results = library.browse("mp3quran:root")
+        assert len(results) == 3
+        assert results[0].uri == "mp3quran:languages"
+        assert results[1].uri == "mp3quran:reciters"
+        assert results[2].uri == "mp3quran:radios"
+
+    def test_browse_languages(self, library):
+        results = library.browse("mp3quran:languages")
         assert len(results) == 2
-        assert results[0].uri == "mp3quran:reciters"
-        assert results[1].uri == "mp3quran:radios"
+        assert results[0].uri == "mp3quran:language:_arabic"
+        assert results[0].name == "Arabic"
+        assert results[1].uri == "mp3quran:language:_english"
+        assert results[1].name == "English"
+
+    def test_browse_language_switches_and_shows_reciters(self, library):
+        results = library.browse("mp3quran:language:_english")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:reciter:1"
+        assert results[0].type == Ref.DIRECTORY
 
     def test_browse_reciters(self, library):
         results = library.browse("mp3quran:reciters")
