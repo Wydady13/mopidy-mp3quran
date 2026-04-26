@@ -32,7 +32,7 @@ class TestExtension:
     def test_get_default_config_has_language(self):
         ext = Extension()
         config = ext.get_default_config()
-        assert "language = English" in config
+        assert "language = english" in config
 
     def test_get_default_config_has_cache_ttl(self):
         ext = Extension()
