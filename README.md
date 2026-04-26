@@ -123,7 +123,7 @@ Configuration files are in `docker/mopidy.conf` and `docker/snapserver.conf`.
 
 ## Changelog
 
-### v0.2.0 (unreleased)
+### v0.2.0 (2026-04-26)
 
 - Migrate to mp3quran.net v3 REST API
 - Support multiple moshaf (recitation versions) per reciter
