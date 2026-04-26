@@ -176,9 +176,17 @@ class Mp3QuranSearchProvider(backend.SearchProvider):
 
         results = self.backend.mp3quran.search(query_str)
         tracks = []
+        artists = []
         for ref in results:
             if ref.type == Ref.TRACK:
                 lookup_tracks = self.backend.library.lookup(ref.uri)
                 tracks.extend(lookup_tracks)
+            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:reciter:'):
+                try:
+                    reciter_id = int(ref.uri.split(':')[2])
+                    reciter = self.backend.mp3quran.reciters[reciter_id]
+                    artists.append(Artist(name=reciter['name']))
+                except (IndexError, ValueError, KeyError):
+                    logger.debug('Could not extract artist from ref: %s', ref.uri)
 
-        return SearchResult(tracks=tracks)
+        return SearchResult(tracks=tracks, artists=artists)
