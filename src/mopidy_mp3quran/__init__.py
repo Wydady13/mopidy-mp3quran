@@ -1,10 +1,12 @@
 import logging
 import os
 
+from importlib.metadata import version as _version
+
 from mopidy import config, ext
 
 
-__version__ = '0.2'
+__version__ = _version("Mopidy-Mp3Quran")
 
 logger = logging.getLogger(__name__)
 

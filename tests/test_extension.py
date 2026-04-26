@@ -15,8 +15,9 @@ class TestExtension:
         assert ext.dist_name == "Mopidy-Mp3Quran"
 
     def test_version(self):
+        from packaging.version import Version
         ext = Extension()
-        assert ext.version == "0.2"
+        assert Version(ext.version) == Version("0.2.0")
 
     def test_get_default_config_has_section(self):
         ext = Extension()

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools >= 61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Mopidy-Mp3Quran"
+version = "0.2.0"
+description = "Mopidy extension for streaming Quran from mp3quran.net"
+readme = "README.md"
+license = "MIT"
+requires-python = ">= 3.11"
+authors = [
+    {name = "Ayman Bagabas", email = "ayman.bagabas@gmail.com"},
+]
+urls = {Homepage = "https://github.com/aymanbagabas/mopidy-mp3quran"}
+classifiers = [
+    "Environment :: No Input/Output (Daemon)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "Mopidy >= 4.0",
+    "Pykka >= 4.0",
+    "requests",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "responses",
+]
+
+[project.entry-points."mopidy.ext"]
+mp3quran = "mopidy_mp3quran:Extension"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mopidy_mp3quran = ["ext.conf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
