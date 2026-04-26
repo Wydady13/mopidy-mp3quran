@@ -57,9 +57,9 @@ class Mp3Quran:
                 self.suras_name[int(sura['id'])] = sura['name']
             self._suras_timestamp = time.time()
         except requests.RequestException as e:
-            logger.error('Failed to fetch surah names: %s', e)
+            logger.error('Mp3Quran: Failed to fetch surah names: %s', e)
         except (KeyError, ValueError) as e:
-            logger.error('Invalid surah names data: %s', e)
+            logger.error('Mp3Quran: Invalid surah names data: %s', e)
 
     def init_reciters(self) -> None:
         if self._is_cache_valid(self._reciters_timestamp):
@@ -78,13 +78,13 @@ class Mp3Quran:
                         'rewaya': reciter['rewaya'],
                     }
                 except (KeyError, ValueError) as e:
-                    logger.warning('Skipping invalid reciter entry: %s', e)
+                    logger.warning('Mp3Quran: Skipping invalid reciter entry: %s', e)
                     continue
             self._reciters_timestamp = time.time()
         except requests.RequestException as e:
-            logger.error('Failed to fetch reciters: %s', e)
+            logger.error('Mp3Quran: Failed to fetch reciters: %s', e)
         except (KeyError, ValueError) as e:
-            logger.error('Invalid reciters data: %s', e)
+            logger.error('Mp3Quran: Invalid reciters data: %s', e)
 
     def init_radios(self) -> None:
         if self._is_cache_valid(self._radios_timestamp):
@@ -100,13 +100,13 @@ class Mp3Quran:
                         'url': radio['URL'],
                     })
                 except (KeyError, ValueError) as e:
-                    logger.warning('Skipping invalid radio entry: %s', e)
+                    logger.warning('Mp3Quran: Skipping invalid radio entry: %s', e)
                     continue
             self._radios_timestamp = time.time()
         except requests.RequestException as e:
-            logger.error('Failed to fetch radios: %s', e)
+            logger.error('Mp3Quran: Failed to fetch radios: %s', e)
         except (KeyError, ValueError) as e:
-            logger.error('Invalid radios data: %s', e)
+            logger.error('Mp3Quran: Invalid radios data: %s', e)
 
     def translate_uri(self, uri: str) -> Optional[str]:
         """Translate a mopidy URI to a streaming URL."""
@@ -152,7 +152,7 @@ class Mp3Quran:
         results = []
         reciter_id = int(reciter_id)
         if reciter_id not in self.reciters:
-            logger.warning('Reciter ID %d not found', reciter_id)
+            logger.warning('Mp3Quran: Reciter ID %d not found', reciter_id)
             return results
         reciter = self.reciters[reciter_id]
         for sura_no in reciter['suras']:

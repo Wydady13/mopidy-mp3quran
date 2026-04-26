@@ -167,7 +167,7 @@ class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
     def translate_uri(self, uri: str) -> Optional[str]:
         url = self.backend.mp3quran.translate_uri(uri)
         if url:
-            logger.info('Stream URL: %s', url)
+            logger.info('Mp3Quran: Stream URL: %s', url)
             return url
         else:
             logger.debug('URI could not be translated: %s', uri)
