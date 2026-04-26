@@ -218,7 +218,7 @@ class TestMp3QuranCaching:
     def test_cache_prevents_refetch(self, mocked_api):
         c = Mp3Quran(language="English", cache_ttl=3600)
         first_call_count = len(responses.calls)
-        c.init_reciters()
+        c._init_reciters()
         second_call_count = len(responses.calls)
         assert second_call_count == first_call_count
 
@@ -226,7 +226,7 @@ class TestMp3QuranCaching:
         c = Mp3Quran(language="English", cache_ttl=1)
         initial_calls = len(responses.calls)
         time.sleep(1.1)
-        c.init_reciters()
+        c._init_reciters()
         assert len(responses.calls) > initial_calls
 
     def test_refresh_clears_cache(self, client):

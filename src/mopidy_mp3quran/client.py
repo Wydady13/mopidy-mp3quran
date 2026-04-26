@@ -38,8 +38,8 @@ class Mp3Quran:
         self._suras_timestamp: float = 0.0
 
         self._init_suras()
-        self.init_reciters()
-        self.init_radios()
+        self._init_reciters()
+        self._init_radios()
 
     def _is_cache_valid(self, timestamp: float) -> bool:
         if timestamp == 0.0:
@@ -61,7 +61,7 @@ class Mp3Quran:
         except (KeyError, ValueError) as e:
             logger.error('Mp3Quran: Invalid surah names data: %s', e)
 
-    def init_reciters(self) -> None:
+    def _init_reciters(self) -> None:
         if self._is_cache_valid(self._reciters_timestamp):
             return
         try:
@@ -86,7 +86,7 @@ class Mp3Quran:
         except (KeyError, ValueError) as e:
             logger.error('Mp3Quran: Invalid reciters data: %s', e)
 
-    def init_radios(self) -> None:
+    def _init_radios(self) -> None:
         if self._is_cache_valid(self._radios_timestamp):
             return
         try:
@@ -187,5 +187,5 @@ class Mp3Quran:
         self._radios_timestamp = 0.0
         self._suras_timestamp = 0.0
         self._init_suras()
-        self.init_reciters()
-        self.init_radios()
+        self._init_reciters()
+        self._init_radios()
