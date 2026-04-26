@@ -96,6 +96,26 @@ Run the test suite:
 pytest
 ```
 
+### Docker
+
+Run with Docker Compose (includes Mopidy + Snapcast server):
+
+```bash
+docker compose up
+```
+
+This starts a single container with Mopidy and Snapcast server. Mopidy outputs audio to a named pipe that Snapcast reads from.
+
+| Port | Service              |
+| ---- | -------------------- |
+| 6600 | Mopidy MPD           |
+| 6680 | Mopidy HTTP          |
+| 1704 | Snapcast stream      |
+| 1705 | Snapcast control     |
+| 1780 | Snapcast HTTP/Web UI |
+
+Configuration files are in `docker/mopidy.conf` and `docker/snapserver.conf`.
+
 ## Project resources
 
 - [Source code](https://github.com/aymanbagabas/mopidy-mp3quran)

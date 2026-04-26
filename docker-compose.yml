@@ -1,0 +1,20 @@
+services:
+  mopidy:
+    build: .
+    image: mopidy-mp3quran:latest
+    environment:
+      - TERM=dumb
+    ports:
+      - "6600:6600"
+      - "6680:6680"
+      - "1704:1704"
+      - "1705:1705"
+      - "1780:1780"
+    volumes:
+      - mopidy-cache:/var/cache/mopidy
+      - mopidy-data:/var/lib/mopidy
+      - $HOME/Music:/var/lib/mopidy/media:ro
+
+volumes:
+  mopidy-cache:
+  mopidy-data:
