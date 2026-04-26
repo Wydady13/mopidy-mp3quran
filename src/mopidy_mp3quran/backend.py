@@ -44,7 +44,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         mp3quran_config = config.get('mp3quran', {})
         self.mp3quran = client.Mp3Quran(
             session=self.session,
-            language=mp3quran_config.get('language', client._DEFAULT_LANGUAGE),
+            locale=mp3quran_config.get('language', client._DEFAULT_LOCALE),
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
         )
@@ -69,14 +69,24 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         if variant == 'root':
             results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
             results.append(Ref.directory(uri='mp3quran:reciters', name='Reciters'))
+            results.append(Ref.directory(uri='mp3quran:riwayat', name='Riwayat'))
             results.append(Ref.directory(uri='mp3quran:radios', name='Radios'))
+            results.append(Ref.directory(uri='mp3quran:tafasir', name='Tafasir'))
         elif variant == 'languages':
             results = self.backend.mp3quran.get_languages()
         elif variant == 'language' and identifier:
-            self.backend.mp3quran.set_language(identifier)
+            self.backend.mp3quran.set_locale(identifier)
             results = self.backend.mp3quran.get_reciters()
         elif variant == 'radios':
             results = self.backend.mp3quran.get_radios()
+        elif variant == 'riwayat':
+            results = self.backend.mp3quran.get_riwayat()
+        elif variant == 'riwaya' and identifier:
+            results = self.backend.mp3quran.riwaya_reciters(int(identifier))
+        elif variant == 'tafasir':
+            results = self.backend.mp3quran.get_tafasir()
+        elif variant == 'tafsir' and identifier:
+            results = self.backend.mp3quran.tafsir_audio(int(identifier))
         elif variant == 'reciters':
             results = self.backend.mp3quran.get_reciters()
         elif variant == 'reciter' and identifier:
@@ -112,6 +122,12 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
                 sura_no = int(parsed_uri[3])
             elif variant == 'radio':
                 radio_id = int(parsed_uri[1])
+            elif variant == 'tafsir_audio':
+                if len(parsed_uri) != 3:
+                    logger.debug('Invalid tafsir_audio uri format: %s', uri)
+                    return tracks
+                tafsir_id = int(parsed_uri[1])
+                audio_id = int(parsed_uri[2])
             else:
                 logger.debug('Unknown variant in uri: %s', uri)
                 return tracks
@@ -145,6 +161,13 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
                 tracks.append(Track(uri=uri, name=radio['name']))
             else:
                 logger.debug('Radio ID %d not found', radio_id)
+        elif variant == 'tafsir_audio':
+            url = self.backend.mp3quran.translate_tafsir_uri(tafsir_id, audio_id)
+            if url:
+                tafsir_name = self.backend.mp3quran.tafasir.get(tafsir_id, {}).get('name', 'Tafsir')
+                tracks.append(Track(uri=uri, name=tafsir_name, album=Album(name=tafsir_name)))
+            else:
+                logger.debug('Tafsir audio %d/%d not found', tafsir_id, audio_id)
 
         return tracks
 

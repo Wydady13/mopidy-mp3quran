@@ -39,29 +39,30 @@ timeout = 10
 
 **Supported languages:**
 
-| Locale | Language | Native |
-|--------|----------|--------|
-| `ar` | Arabic | العربية |
-| `eng` | English | English |
-| `fr` | French | Français |
-| `ru` | Russian | Русский |
-| `de` | German | Deutsch |
-| `es` | Spanish | Español |
-| `tr` | Turkish | Türkçe |
-| `cn` | Chinese | 中文 |
-| `th` | Thai | ไทย |
-| `ur` | Urdu | اردو |
-| `bn` | Bengali | বাংলা |
-| `bs` | Bosnian | Bosanski |
-| `ug` | Uyghur | ئۇيغۇرچە |
-| `fa` | Persian | فارسی |
-| `tg` | Tajik (Cyrillic) | тоҷикӣ |
-| `ml` | Malayalam | മലയാളം |
-| `tl` | Tagalog | Tagalog |
-| `id` | Indonesian | Indonesia |
-| `pt` | Portuguese | Português |
-| `ha` | Hausa | Hausa |
-| `sw` | Swahili | Kiswahili |
+| Locale | Language         | Native    |
+| ------ | ---------------- | --------- |
+| `ar`   | Arabic           | العربية   |
+| `eng`  | English          | English   |
+| `fr`   | French           | Français  |
+| `ru`   | Russian          | Русский   |
+| `de`   | German           | Deutsch   |
+| `es`   | Spanish          | Español   |
+| `tr`   | Turkish          | Türkçe    |
+| `cn`   | Chinese          | 中文      |
+| `th`   | Thai             | ไทย       |
+| `ur`   | Urdu             | اردو      |
+| `bn`   | Bengali          | বাংলা     |
+| `bs`   | Bosnian          | Bosanski  |
+| `ug`   | Uyghur           | ئۇيغۇرچە  |
+| `fa`   | Persian          | فارسی     |
+| `tg`   | Tajik (Cyrillic) | тоҷикӣ    |
+| `ml`   | Malayalam        | മലയാളം    |
+| `tl`   | Tagalog          | Tagalog   |
+| `id`   | Indonesian       | Indonesia |
+| `pt`   | Portuguese       | Português |
+| `ha`   | Hausa            | Hausa     |
+| `sw`   | Swahili          | Kiswahili |
+
 - **cache_ttl** - Cache time-to-live in seconds (default: `3600`). Set to `0` to disable caching.
 - **timeout** - HTTP request timeout in seconds (default: `10`).
 

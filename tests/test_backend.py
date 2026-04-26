@@ -49,6 +49,26 @@ RECITERS_RESPONSE = {
     ]
 }
 
+TAFASIR_LIST_RESPONSE = {
+    "tafasir": [
+        {
+            "id": 1,
+            "url": "https://www.mp3quran.net/api/v3/tafsir?tafsir=1&language=eng",
+            "name": "Summary of Tafsir Al-Tabari",
+        },
+    ]
+}
+
+TAFASIR_DETAIL_RESPONSE = {
+    "tafasir": {
+        "name": "Summary of Tafsir Al-Tabari",
+        "soar": [
+            {"id": 9, "tafsir_id": 1, "name": "Surah Al-Fatihah", "url": "https://server17.mp3quran.net/tafseer/tabri/001.mp3", "sura_id": 1},
+            {"id": 10, "tafsir_id": 1, "name": "Surah Al-Baqarah Ayat 1-25", "url": "https://server17.mp3quran.net/tafseer/tabri/002-1-25.mp3", "sura_id": 2},
+        ]
+    }
+}
+
 RADIOS_RESPONSE = {
     "radios": [
         {"id": 1, "name": "Quran Radio 24/7", "url": "https://stream.example.com/radio1"},
@@ -62,20 +82,22 @@ LANGUAGES_RESPONSE = {
             "language": "Arabic",
             "native": "العربية",
             "locale": "ar",
-            "surah": "https://www.mp3quran.net/api/v3/suwar?language=ar",
-            "rewayah": "https://www.mp3quran.net/api/v3/riwayat?language=ar",
-            "reciters": "https://www.mp3quran.net/api/v3/reciters?language=ar",
-            "radios": "https://www.mp3quran.net/api/v3/radios?language=ar",
+            "surah": "https://mp3quran.net/api/v3/suwar?language=ar",
+            "rewayah": "https://mp3quran.net/api/v3/riwayat?language=ar",
+            "reciters": "https://mp3quran.net/api/v3/reciters?language=ar",
+            "radios": "https://mp3quran.net/api/v3/radios?language=ar",
+            "tafasir": "https://mp3quran.net/api/v3/tafasir?language=ar",
         },
         {
             "id": "2",
             "language": "English",
             "native": "English",
             "locale": "eng",
-            "surah": "https://www.mp3quran.net/api/v3/suwar?language=eng",
-            "rewayah": "https://www.mp3quran.net/api/v3/riwayat?language=eng",
-            "reciters": "https://www.mp3quran.net/api/v3/reciters?language=eng",
-            "radios": "https://www.mp3quran.net/api/v3/radios?language=eng",
+            "surah": "https://mp3quran.net/api/v3/suwar?language=eng",
+            "rewayah": "https://mp3quran.net/api/v3/riwayat?language=eng",
+            "reciters": "https://mp3quran.net/api/v3/reciters?language=eng",
+            "radios": "https://mp3quran.net/api/v3/radios?language=eng",
+            "tafasir": "https://mp3quran.net/api/v3/tafasir?language=eng",
         },
     ]
 }
@@ -134,6 +156,12 @@ def mocked_api():
             responses.GET,
             _api_url('radios?language=eng'),
             json=RADIOS_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
+            _api_url('tafasir?language=eng'),
+            json=TAFASIR_LIST_RESPONSE,
             status=200,
         )
         yield
@@ -204,10 +232,12 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_root(self, library):
         results = library.browse("mp3quran:root")
-        assert len(results) == 3
+        assert len(results) == 5
         assert results[0].uri == "mp3quran:languages"
         assert results[1].uri == "mp3quran:reciters"
-        assert results[2].uri == "mp3quran:radios"
+        assert results[2].uri == "mp3quran:riwayat"
+        assert results[3].uri == "mp3quran:radios"
+        assert results[4].uri == "mp3quran:tafasir"
 
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")
@@ -248,6 +278,50 @@ class TestMp3QuranLibraryProvider:
         assert len(results) == 1
         assert results[0].uri == "mp3quran:radio:1"
         assert results[0].type == Ref.TRACK
+
+    def test_browse_riwayat(self, library):
+        results = library.browse("mp3quran:riwayat")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:riwaya:1"
+        assert results[0].name == "Rewayat Hafs A'n Assem"
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_riwaya_reciters(self, library):
+        results = library.browse("mp3quran:riwaya:1")
+        assert len(results) == 1
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_tafasir(self, library):
+        results = library.browse("mp3quran:tafasir")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:tafsir:1"
+        assert results[0].name == "Summary of Tafsir Al-Tabari"
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_tafsir_audio(self, library):
+        with responses.mock:
+            responses.add(
+                responses.GET,
+                _api_url('tafsir?tafsir=1&language=eng'),
+                json=TAFASIR_DETAIL_RESPONSE,
+                status=200,
+            )
+            results = library.browse("mp3quran:tafsir:1")
+            assert len(results) == 2
+            assert results[0].uri == "mp3quran:tafsir_audio:1:9"
+            assert results[0].type == Ref.TRACK
+
+    def test_lookup_tafsir_audio(self, library):
+        with responses.mock:
+            responses.add(
+                responses.GET,
+                _api_url('tafsir?tafsir=1&language=eng'),
+                json=TAFASIR_DETAIL_RESPONSE,
+                status=200,
+            )
+            tracks = library.lookup("mp3quran:tafsir_audio:1:9")
+            assert len(tracks) == 1
+            assert tracks[0].name == "Summary of Tafsir Al-Tabari"
 
     def test_browse_unknown_uri(self, library):
         results = library.browse("mp3quran:unknown")
@@ -344,6 +418,17 @@ class TestMp3QuranPlaybackProvider:
     def test_translate_uri_radio(self, playback):
         url = playback.translate_uri("mp3quran:radio:1")
         assert url == "https://stream.example.com/radio1"
+
+    def test_translate_uri_tafsir_audio(self, playback):
+        with responses.mock:
+            responses.add(
+                responses.GET,
+                _api_url('tafsir?tafsir=1&language=eng'),
+                json=TAFASIR_DETAIL_RESPONSE,
+                status=200,
+            )
+            url = playback.translate_uri("mp3quran:tafsir_audio:1:9")
+            assert url == "https://server17.mp3quran.net/tafseer/tabri/001.mp3"
 
     def test_translate_uri_invalid(self, playback):
         url = playback.translate_uri("mp3quran:invalid")
