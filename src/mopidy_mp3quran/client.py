@@ -558,6 +558,89 @@ class Mp3Quran:
                 results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
         return results
 
+    def get_distinct(self, locale: str, field: str, query: dict = None) -> set:
+        """Return distinct values for a field, optionally filtered by query."""
+        data = self._get_locale_data(locale)
+        self._init_reciters(locale, data)
+        self._init_suras(locale, data)
+
+        if field == 'artist' or field == 'albumartist':
+            return self._distinct_reciters(data, query)
+        elif field == 'album':
+            return self._distinct_moshafs(data, query)
+        elif field == 'track_name':
+            return self._distinct_suwar(data, query)
+
+        return set()
+
+    def _distinct_reciters(self, data: _LocaleData, query: dict = None) -> set:
+        """Return distinct reciter names, optionally filtered."""
+        results = set()
+        album_filter = None
+        if query and 'album' in query:
+            album_lower = [v.lower() for v in (query['album'] if isinstance(query['album'], list) else [query['album']])]
+            album_filter = album_lower
+
+        for reciter_id, reciter in data.reciters.items():
+            if album_filter:
+                if not any(af in m['name'].lower() for m in reciter['moshaf'] for af in album_filter):
+                    continue
+            results.add(reciter['name'])
+        return results
+
+    def _distinct_moshafs(self, data: _LocaleData, query: dict = None) -> set:
+        """Return distinct moshaf names, optionally filtered."""
+        results = set()
+        artist_filter = None
+        if query and 'artist' in query:
+            artist_lower = [v.lower() for v in (query['artist'] if isinstance(query['artist'], list) else [query['artist']])]
+            artist_filter = artist_lower
+
+        for reciter_id, reciter in data.reciters.items():
+            if artist_filter:
+                if not any(af in reciter['name'].lower() for af in artist_filter):
+                    continue
+            for moshaf in reciter['moshaf']:
+                results.add(moshaf['name'])
+        return results
+
+    def _distinct_suwar(self, data: _LocaleData, query: dict = None) -> set:
+        """Return distinct surah names, optionally filtered."""
+        reciter_ids = None
+        if query and 'artist' in query:
+            artist_lower = [v.lower() for v in (query['artist'] if isinstance(query['artist'], list) else [query['artist']])]
+            reciter_ids = set()
+            for reciter_id, reciter in data.reciters.items():
+                if any(af in reciter['name'].lower() for af in artist_lower):
+                    reciter_ids.add(reciter_id)
+
+        moshaf_names = None
+        if query and 'album' in query:
+            album_lower = [v.lower() for v in (query['album'] if isinstance(query['album'], list) else [query['album']])]
+            moshaf_names = set()
+            for reciter_id, reciter in data.reciters.items():
+                for moshaf in reciter['moshaf']:
+                    if any(af in moshaf['name'].lower() for af in album_lower):
+                        moshaf_names.add((reciter_id, moshaf['id']))
+
+        sura_ids = None
+        if reciter_ids is not None or moshaf_names is not None:
+            sura_ids = set()
+            for reciter_id, reciter in data.reciters.items():
+                if reciter_ids is not None and reciter_id not in reciter_ids:
+                    continue
+                for moshaf in reciter['moshaf']:
+                    if moshaf_names is not None and (reciter_id, moshaf['id']) not in moshaf_names:
+                        continue
+                    sura_ids.update(moshaf['surah_list'])
+
+        results = set()
+        for sid, name in data.suras_name.items():
+            if sura_ids is not None and sid not in sura_ids:
+                continue
+            results.add(name)
+        return results
+
     def refresh(self) -> None:
         """Force re-fetch all data from the API."""
         self.languages = []

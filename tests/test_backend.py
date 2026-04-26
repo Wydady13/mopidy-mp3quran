@@ -411,6 +411,26 @@ class TestMp3QuranLibraryProvider:
             library.refresh()
             mock_refresh.assert_called_once()
 
+    def test_get_distinct_artist(self, library):
+        result = library.get_distinct('artist')
+        assert "Mishary Rashid Alafasy" in result
+
+    def test_get_distinct_album(self, library):
+        result = library.get_distinct('album')
+        assert "Rewayat Hafs A'n Assem - Murattal" in result
+
+    def test_get_distinct_track_name(self, library):
+        result = library.get_distinct('track_name')
+        assert "Al-Fatihah" in result
+
+    def test_get_distinct_unknown_field(self, library):
+        result = library.get_distinct('genre')
+        assert result == set()
+
+    def test_get_distinct_artist_with_query(self, library):
+        result = library.get_distinct('artist', query={'album': 'Hafs'})
+        assert "Mishary Rashid Alafasy" in result
+
 
 class TestMp3QuranLibrarySearch:
 

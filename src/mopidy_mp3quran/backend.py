@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import requests as _requests
 import pykka
@@ -8,6 +8,7 @@ import mopidy_mp3quran
 from mopidy_mp3quran import client
 from mopidy import backend, httpclient
 from mopidy.models import Ref, Track, Album, Artist, SearchResult
+from mopidy.types import DistinctField, Query, SearchField
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,16 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
     def refresh(self, uri: Optional[str] = None) -> None:
         self.backend.mp3quran.refresh()
+
+    def get_distinct(
+        self,
+        field: DistinctField,
+        query: Query[SearchField] = None,
+    ) -> Set[str]:
+        locale = self.backend.mp3quran.resolve_language(
+            self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
+        )
+        return self.backend.mp3quran.get_distinct(locale, field, query)
 
     def lookup(self, uri: str) -> List[Track]:
         """Look up a track by URI."""

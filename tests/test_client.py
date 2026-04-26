@@ -583,3 +583,61 @@ class TestMp3QuranErrorHandling:
             c._ensure_loaded('eng')
             assert 1 in data.radios
             assert len(data.radios) == 1
+
+
+class TestMp3QuranGetDistinct:
+
+    def test_distinct_artist(self, client):
+        result = client.get_distinct('eng', 'artist')
+        assert "Mishary Rashid Alafasy" in result
+        assert "Abdul Rahman Al-Sudais" in result
+
+    def test_distinct_albumartist(self, client):
+        result = client.get_distinct('eng', 'albumartist')
+        assert "Mishary Rashid Alafasy" in result
+        assert "Abdul Rahman Al-Sudais" in result
+
+    def test_distinct_album(self, client):
+        result = client.get_distinct('eng', 'album')
+        assert "Rewayat Hafs A'n Assem - Murattal" in result
+        assert "Rewayat Warsh A'n Nafi' - Murattal" in result
+
+    def test_distinct_track_name(self, client):
+        result = client.get_distinct('eng', 'track_name')
+        assert "Al-Fatihah" in result
+        assert "Al-Baqarah" in result
+        assert "Aal Imran" in result
+
+    def test_distinct_unknown_field_returns_empty(self, client):
+        result = client.get_distinct('eng', 'genre')
+        assert result == set()
+
+    def test_distinct_artist_filtered_by_album(self, client):
+        result = client.get_distinct('eng', 'artist', query={'album': 'Warsh'})
+        assert "Mishary Rashid Alafasy" in result
+        assert "Abdul Rahman Al-Sudais" not in result
+
+    def test_distinct_album_filtered_by_artist(self, client):
+        result = client.get_distinct('eng', 'album', query={'artist': 'Sudais'})
+        assert "Rewayat Hafs A'n Assem - Murattal" in result
+        assert "Rewayat Warsh A'n Nafi' - Murattal" not in result
+
+    def test_distinct_track_name_filtered_by_artist(self, client):
+        result = client.get_distinct('eng', 'track_name', query={'artist': 'Sudais'})
+        assert "Al-Fatihah" in result
+        assert "Al-Baqarah" in result
+        assert "Aal Imran" not in result
+
+    def test_distinct_track_name_filtered_by_album(self, client):
+        result = client.get_distinct('eng', 'track_name', query={'album': 'Warsh'})
+        assert "Al-Fatihah" in result
+        assert "Al-Baqarah" in result
+        assert "Aal Imran" in result
+
+    def test_distinct_no_query_returns_all(self, client):
+        artists = client.get_distinct('eng', 'artist')
+        albums = client.get_distinct('eng', 'album')
+        tracks = client.get_distinct('eng', 'track_name')
+        assert len(artists) >= 2
+        assert len(albums) >= 2
+        assert len(tracks) >= 3
