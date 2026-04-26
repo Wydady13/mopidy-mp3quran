@@ -1,6 +1,5 @@
 import logging
-import re
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import requests as _requests
 import pykka
@@ -11,16 +10,6 @@ from mopidy import backend, httpclient
 from mopidy.models import Ref, Track, Album, Artist, SearchResult
 
 logger = logging.getLogger(__name__)
-
-
-def parse_uri(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Parse mp3quran URI into (variant, identifier, sub_identifier)."""
-    results = re.findall(
-        r'^mp3quran:([a-z]+)(?::(\d+|[a-z]{2}))?(?::(\d+|[a-z]{2}))?$', uri
-    )
-    if results:
-        return results[0]
-    return None, None, None
 
 
 def get_requests_session(proxy_config, user_agent: str) -> _requests.Session:
@@ -62,7 +51,6 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
 
         self.library = Mp3QuranLibraryProvider(backend=self)
         self.playback = Mp3QuranPlaybackProvider(audio=audio, backend=self)
-        self.search = Mp3QuranSearchProvider(backend=self)
 
 
 class Mp3QuranLibraryProvider(backend.LibraryProvider):
@@ -137,6 +125,38 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
         return tracks
 
+    def search(self, query=None, uris=None, exact=False) -> SearchResult:
+        if query is None:
+            return None
+
+        if isinstance(query, dict):
+            query_str = ' '.join(
+                v for vals in query.values() for v in (vals if isinstance(vals, list) else [vals])
+            )
+        else:
+            query_str = str(query)
+
+        if not query_str.strip():
+            return None
+
+        results = self.backend.mp3quran.search(query_str)
+        tracks = []
+        artists = []
+        for ref in results:
+            if ref.type == Ref.TRACK:
+                lookup_tracks = self.lookup(ref.uri)
+                tracks.extend(lookup_tracks)
+            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:reciter:'):
+                try:
+                    reciter_id = int(ref.uri.split(':')[2])
+                    reciter = self.backend.mp3quran.reciters[reciter_id]
+                    artists.append(Artist(name=reciter['name']))
+                except (IndexError, ValueError, KeyError):
+                    logger.debug('Could not extract artist from ref: %s', ref.uri)
+
+        return SearchResult(tracks=tracks, artists=artists)
+
+
 class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
 
     def __init__(self, audio, backend) -> None:
@@ -152,41 +172,3 @@ class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
         else:
             logger.debug('URI could not be translated: %s', uri)
             return None
-
-
-class Mp3QuranSearchProvider(backend.SearchProvider):
-
-    def __init__(self, backend) -> None:
-        super().__init__(backend)
-
-    def search(self, query=None, uris=None, exact=False) -> SearchResult:
-        if query is None:
-            return SearchResult()
-
-        # Extract query string from Mopidy query dict
-        if isinstance(query, dict):
-            query_str = ' '.join(
-                v for vals in query.values() for v in (vals if isinstance(vals, list) else [vals])
-            )
-        else:
-            query_str = str(query)
-
-        if not query_str.strip():
-            return SearchResult()
-
-        results = self.backend.mp3quran.search(query_str)
-        tracks = []
-        artists = []
-        for ref in results:
-            if ref.type == Ref.TRACK:
-                lookup_tracks = self.backend.library.lookup(ref.uri)
-                tracks.extend(lookup_tracks)
-            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:reciter:'):
-                try:
-                    reciter_id = int(ref.uri.split(':')[2])
-                    reciter = self.backend.mp3quran.reciters[reciter_id]
-                    artists.append(Artist(name=reciter['name']))
-                except (IndexError, ValueError, KeyError):
-                    logger.debug('Could not extract artist from ref: %s', ref.uri)
-
-        return SearchResult(tracks=tracks, artists=artists)

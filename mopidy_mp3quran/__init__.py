@@ -21,9 +21,9 @@ class Extension(ext.Extension):
 
     def get_config_schema(self) -> config.ConfigSchema:
         schema = super().get_config_schema()
-        schema['language'] = config.String(default='English')
-        schema['cache_ttl'] = config.Integer(default=3600, minimum=0)
-        schema['timeout'] = config.Integer(default=10, minimum=1)
+        schema['language'] = config.String()
+        schema['cache_ttl'] = config.Integer(minimum=0)
+        schema['timeout'] = config.Integer(minimum=1)
         return schema
 
     def setup(self, registry) -> None:
