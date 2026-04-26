@@ -27,6 +27,12 @@ RIWAYAT_RESPONSE = {
     ]
 }
 
+MOSHAF_CATALOG_RESPONSE = {
+    "riwayat": [
+        {"id": 11, "moshaf_type": 1, "moshaf_id": 1, "name": "Rewayat Hafs A'n Assem - Murattal"},
+    ]
+}
+
 RECITERS_RESPONSE = {
     "reciters": [
         {
@@ -148,6 +154,12 @@ def mocked_api():
         )
         responses.add(
             responses.GET,
+            _api_url('moshaf?language=eng'),
+            json=MOSHAF_CATALOG_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
             _api_url('reciters?language=eng'),
             json=RECITERS_RESPONSE,
             status=200,
@@ -232,12 +244,14 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_root(self, library):
         results = library.browse("mp3quran:root")
-        assert len(results) == 5
+        assert len(results) == 7
         assert results[0].uri == "mp3quran:languages"
         assert results[1].uri == "mp3quran:eng:reciters"
         assert results[2].uri == "mp3quran:eng:riwayat"
-        assert results[3].uri == "mp3quran:eng:radios"
-        assert results[4].uri == "mp3quran:eng:tafasir"
+        assert results[3].uri == "mp3quran:eng:moshaf"
+        assert results[4].uri == "mp3quran:eng:suwar"
+        assert results[5].uri == "mp3quran:eng:radios"
+        assert results[6].uri == "mp3quran:eng:tafasir"
 
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")
@@ -249,11 +263,13 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_language_shows_categories(self, library):
         results = library.browse("mp3quran:ar:language")
-        assert len(results) == 4
+        assert len(results) == 6
         assert results[0].uri == "mp3quran:ar:reciters"
         assert results[1].uri == "mp3quran:ar:riwayat"
-        assert results[2].uri == "mp3quran:ar:radios"
-        assert results[3].uri == "mp3quran:ar:tafasir"
+        assert results[2].uri == "mp3quran:ar:moshaf"
+        assert results[3].uri == "mp3quran:ar:suwar"
+        assert results[4].uri == "mp3quran:ar:radios"
+        assert results[5].uri == "mp3quran:ar:tafasir"
 
     def test_browse_reciters(self, library):
         results = library.browse("mp3quran:eng:reciters")
@@ -282,10 +298,34 @@ class TestMp3QuranLibraryProvider:
         assert results[0].name == "Rewayat Hafs A'n Assem"
         assert results[0].type == Ref.DIRECTORY
 
-    def test_browse_riwaya_reciters(self, library):
+    def test_browse_riwaya_moshafs(self, library):
         results = library.browse("mp3quran:eng:riwaya:1")
-        assert len(results) == 1
-        assert results[0].uri == "mp3quran:eng:moshaf:1:1"
+        assert len(results) >= 1
+        assert all(':moshaf:' in r.uri for r in results)
+
+    def test_browse_moshaf(self, library):
+        results = library.browse("mp3quran:eng:moshaf")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf_type:")
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_moshaf_type_reciters(self, library):
+        results = library.browse("mp3quran:eng:moshaf_type:11")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf:")
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_suwar(self, library):
+        results = library.browse("mp3quran:eng:suwar")
+        assert len(results) == 3
+        assert results[0].uri == "mp3quran:eng:sura:1"
+        assert results[0].name == "Al-Fatihah"
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_sura_moshafs(self, library):
+        results = library.browse("mp3quran:eng:sura:1")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf:")
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_radios(self, library):

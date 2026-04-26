@@ -24,6 +24,13 @@ RIWAYAT_RESPONSE = {
     ]
 }
 
+MOSHAF_CATALOG_RESPONSE = {
+    "riwayat": [
+        {"id": 11, "moshaf_type": 1, "moshaf_id": 1, "name": "Rewayat Hafs A'n Assem - Murattal"},
+        {"id": 21, "moshaf_type": 2, "moshaf_id": 1, "name": "Rewayat Warsh A'n Nafi' - Murattal"},
+    ]
+}
+
 RECITERS_RESPONSE = {
     "reciters": [
         {
@@ -139,6 +146,12 @@ def mocked_api():
         )
         responses.add(
             responses.GET,
+            _api_url('moshaf?language=eng'),
+            json=MOSHAF_CATALOG_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
             _api_url('reciters?language=eng'),
             json=RECITERS_RESPONSE,
             status=200,
@@ -178,6 +191,7 @@ class TestMp3QuranInit:
             responses.add(responses.GET, _api_url('languages'), json=LANGUAGES_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('suwar?language=eng'), json=SURAS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('riwayat?language=eng'), json=RIWAYAT_RESPONSE, status=200)
+            responses.add(responses.GET, _api_url('moshaf?language=eng'), json=MOSHAF_CATALOG_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('reciters?language=eng'), json=RECITERS_RESPONSE, status=200)
             responses.add(responses.GET, _api_url('radios?language=eng'), json=RADIOS_RESPONSE, status=200)
             c = Mp3Quran()
@@ -185,6 +199,13 @@ class TestMp3QuranInit:
             c._ensure_loaded('eng')
             assert data.suras_name[1] == "Al-Fatihah"
             assert data.suras_name[2] == "Al-Baqarah"
+
+    def test_moshaf_loaded(self, client):
+        client._ensure_loaded('eng')
+        data = client._get_locale_data('eng')
+        assert 11 in data.moshaf
+        assert data.moshaf[11]['name'] == "Rewayat Hafs A'n Assem - Murattal"
+        assert data.moshaf[11]['moshaf_type'] == 1
 
     def test_riwayat_loaded(self, client):
         client._ensure_loaded('eng')
@@ -405,6 +426,41 @@ class TestMp3QuranSearch:
     def test_search_reciter_returns_directory_ref(self, client):
         refs = client.search('eng', "Mishary")
         assert refs[0].type == "directory"
+
+
+class TestMp3QuranMoshafCatalog:
+
+    def test_get_moshaf(self, client):
+        refs = client.get_moshaf('eng')
+        assert len(refs) >= 2
+        uris = [r.uri for r in refs]
+        assert "mp3quran:eng:moshaf_type:11" in uris
+        assert "mp3quran:eng:moshaf_type:21" in uris
+
+    def test_moshaf_reciters(self, client):
+        refs = client.moshaf_reciters('eng', 11)
+        assert len(refs) >= 1
+        assert all(':moshaf:' in r.uri for r in refs)
+        assert any("Mishary" in r.name for r in refs)
+
+    def test_get_suwar(self, client):
+        refs = client.get_suwar('eng')
+        assert len(refs) == 3
+        assert refs[0].uri == "mp3quran:eng:sura:1"
+        assert refs[0].name == "Al-Fatihah"
+        assert refs[0].type == "directory"
+
+    def test_sura_moshafs(self, client):
+        refs = client.sura_moshafs('eng', 1)
+        assert len(refs) >= 1
+        assert any(':moshaf:' in r.uri for r in refs)
+        assert any("Mishary" in r.name for r in refs)
+
+    def test_riwaya_moshafs(self, client):
+        refs = client.riwaya_moshafs('eng', 1)
+        assert len(refs) >= 1
+        assert all(':moshaf:' in r.uri for r in refs)
+        assert any("Mishary" in r.name for r in refs)
 
 
 class TestMp3QuranCaching:

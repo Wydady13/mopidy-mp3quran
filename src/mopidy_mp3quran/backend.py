@@ -98,7 +98,15 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         elif variant == 'riwayat':
             results = mp3quran.get_riwayat(locale)
         elif variant == 'riwaya' and identifier:
-            results = mp3quran.riwaya_reciters(locale, int(identifier))
+            results = mp3quran.riwaya_moshafs(locale, int(identifier))
+        elif variant == 'moshaf' and not identifier:
+            results = mp3quran.get_moshaf(locale)
+        elif variant == 'moshaf_type' and identifier:
+            results = mp3quran.moshaf_reciters(locale, int(identifier))
+        elif variant == 'suwar':
+            results = mp3quran.get_suwar(locale)
+        elif variant == 'sura' and identifier:
+            results = mp3quran.sura_moshafs(locale, int(identifier))
         elif variant == 'radios':
             results = mp3quran.get_radios(locale)
         elif variant == 'tafasir':
