@@ -4,6 +4,7 @@ from unittest import mock
 import pytest
 import responses
 
+from mopidy.models import Album, Artist, Track
 from mopidy_mp3quran.client import (
     Mp3Quran, _API_BASE, _DEFAULT_CACHE_TTL, _DEFAULT_LOCALE,
 )
@@ -395,37 +396,89 @@ class TestMp3QuranTranslateUri:
 
 class TestMp3QuranSearch:
 
-    def test_search_reciter_by_name(self, client):
-        refs = client.search('eng', "Mishary")
-        assert len(refs) >= 1
-        assert "Mishary" in refs[0].name
+    def test_search_any_field_reciter(self, client):
+        result = client.search('eng', {'any': 'Mishary'})
+        assert len(result.artists) >= 1
+        assert any("Mishary" in a.name for a in result.artists)
 
-    def test_search_reciter_by_moshaf_name(self, client):
-        refs = client.search('eng', "Warsh")
-        assert len(refs) >= 1
+    def test_search_artist_field(self, client):
+        result = client.search('eng', {'artist': 'Mishary'})
+        assert len(result.artists) >= 1
+        assert any("Mishary" in a.name for a in result.artists)
 
-    def test_search_radio(self, client):
-        refs = client.search('eng', "24/7")
-        assert len(refs) == 1
-        assert refs[0].name == "Quran Radio 24/7"
+    def test_search_album_field(self, client):
+        result = client.search('eng', {'album': 'Warsh'})
+        assert len(result.albums) >= 1
+        assert any("Warsh" in a.name for a in result.albums)
 
-    def test_search_case_insensitive(self, client):
-        refs = client.search('eng', "mishary")
-        assert len(refs) >= 1
+    def test_search_track_name_field(self, client):
+        result = client.search('eng', {'track_name': 'Fatihah'})
+        assert len(result.tracks) >= 1
+        assert any("Al-Fatihah" in t.name for t in result.tracks)
+
+    def test_search_any_field_radio(self, client):
+        result = client.search('eng', {'any': 'Radio'})
+        radio_tracks = [r for r in result.tracks if ':radio:' in r.uri]
+        assert len(radio_tracks) >= 1
+
+    def test_search_any_field_moshaf(self, client):
+        result = client.search('eng', {'any': 'Warsh'})
+        assert len(result.albums) >= 1
+
+    def test_search_fuzzy_matching(self, client):
+        result = client.search('eng', {'artist': 'mishary'})
+        assert len(result.artists) >= 1
+        assert any("Mishary" in a.name for a in result.artists)
+
+    def test_search_exact_matching(self, client):
+        result = client.search('eng', {'artist': 'mishary'}, exact=True)
+        assert len(result.artists) == 0
+
+    def test_search_exact_matching_case_insensitive(self, client):
+        result = client.search('eng', {'artist': 'Mishary Rashid Alafasy'}, exact=True)
+        assert len(result.artists) >= 1
 
     def test_search_no_results(self, client):
-        refs = client.search('eng', "nonexistent")
-        assert refs == []
+        result = client.search('eng', {'any': 'nonexistentxyz123'})
+        assert len(result.artists) == 0
+        assert len(result.albums) == 0
+        assert len(result.tracks) == 0
 
-    def test_search_radio_returns_track_ref(self, client):
-        refs = client.search('eng', "Radio")
-        radio_refs = [r for r in refs if r.uri.startswith("mp3quran:eng:radio:")]
-        assert len(radio_refs) >= 1
-        assert radio_refs[0].type == "track"
+    def test_search_uris_filter(self, client):
+        result = client.search('eng', {'any': 'Mishary'}, uris=['mp3quran:eng:reciters'])
+        assert len(result.artists) >= 1
+        radio_tracks = [r for r in result.tracks if ':radio:' in r.uri]
+        assert len(radio_tracks) == 0
 
-    def test_search_reciter_returns_directory_ref(self, client):
-        refs = client.search('eng', "Mishary")
-        assert refs[0].type == "directory"
+    def test_search_reciter_returns_artist_model(self, client):
+        result = client.search('eng', {'artist': 'Mishary'})
+        assert len(result.artists) >= 1
+        assert isinstance(result.artists[0], Artist)
+        assert result.artists[0].uri is not None
+
+    def test_search_radio_returns_track_model(self, client):
+        result = client.search('eng', {'any': 'Radio'})
+        radio_tracks = [r for r in result.tracks if ':radio:' in r.uri]
+        assert len(radio_tracks) >= 1
+        assert isinstance(radio_tracks[0], Track)
+
+    def test_search_albumartist_field(self, client):
+        result = client.search('eng', {'albumartist': 'Sudais'})
+        assert len(result.artists) >= 1
+
+    def test_search_results_ordered_by_fuzzy_score(self, client):
+        result = client.search('eng', {'artist': 'Mishary Rashid Alafasy'})
+        assert len(result.artists) >= 1
+        exact_match = [a for a in result.artists if a.name == 'Mishary Rashid Alafasy']
+        assert len(exact_match) >= 1
+        assert result.artists[0].name == 'Mishary Rashid Alafasy'
+
+    def test_search_any_matches_multiple_categories_sorted(self, client):
+        result = client.search('eng', {'any': 'Al-Fatihah'})
+        assert len(result.tracks) >= 1
+        assert any('Al-Fatihah' in t.name for t in result.tracks)
+        if len(result.artists) >= 1:
+            assert all(isinstance(a, Artist) for a in result.artists)
 
 
 class TestMp3QuranMoshafCatalog:

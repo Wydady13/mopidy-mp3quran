@@ -1,9 +1,11 @@
 import time
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, Iterable, List, Optional, Any, Set
 
 import requests
-from mopidy.models import Ref
+from rapidfuzz import fuzz, process
+from mopidy.models import Album, Artist, Ref, SearchResult, Track
+from mopidy.types import Uri
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +254,137 @@ class Mp3Quran:
                 logger.warning('Mp3Quran: Skipping invalid radio entry: %s', e)
                 continue
         data.radios_ts = time.time()
+
+    def lookup(self, locale: str, uris: Iterable[Uri]) -> dict[Uri, list[Track]]:
+        """Look up URIs, expanding directory URIs to their child entries."""
+        result = {}
+        for uri in uris:
+            if not uri.startswith('mp3quran:'):
+                continue
+            result.update(self._lookup_uri(locale, uri))
+        return result
+
+    def _lookup_uri(self, locale: str, uri: str) -> dict[Uri, list[Track]]:
+        """Resolve a single URI to a dict of URI → tracks."""
+        parts = uri.split(':')
+        if len(parts) < 3:
+            return {uri: []}
+
+        try:
+            variant = parts[2]
+            data = self._get_locale_data(locale)
+
+            if variant == 'reciter' and len(parts) == 6:
+                return self._lookup_track(locale, data, uri)
+            elif variant == 'reciter' and len(parts) == 4:
+                return {uri: self._lookup_reciter(locale, data, int(parts[3]))}
+            elif variant == 'moshaf' and len(parts) == 5:
+                return {uri: self._lookup_moshaf(locale, data, int(parts[3]), int(parts[4]))}
+            elif variant == 'radio' and len(parts) == 4:
+                return self._lookup_radio(locale, data, uri)
+            elif variant == 'tafsir_audio' and len(parts) == 5:
+                return self._lookup_tafsir_audio(locale, data, uri)
+        except (ValueError, IndexError):
+            pass
+        return {uri: []}
+
+    def _lookup_track(self, locale: str, data: _LocaleData, uri: str) -> dict[Uri, list[Track]]:
+        """Look up a single reciter surah track."""
+        parts = uri.split(':')
+        reciter_id = int(parts[3])
+        moshaf_id = int(parts[4])
+        sura_no = int(parts[5])
+        self._init_reciters(locale, data)
+        self._init_suras(locale, data)
+        if reciter_id not in data.reciters:
+            return {uri: []}
+        reciter = data.reciters[reciter_id]
+        for moshaf in reciter['moshaf']:
+            if moshaf['id'] == moshaf_id and sura_no in moshaf['surah_list']:
+                sura_name = data.suras_name.get(sura_no, 'Surah %d' % sura_no)
+                return {uri: [Track(
+                    uri=Uri(uri), name=sura_name,
+                    artists=frozenset([Artist(
+                        uri=Uri('mp3quran:%s:reciter:%d' % (locale, reciter_id)),
+                        name=reciter['name'],
+                    )]),
+                    album=Album(
+                        uri=Uri('mp3quran:%s:moshaf:%d:%d' % (locale, reciter_id, moshaf_id)),
+                        name=moshaf['name'],
+                    ),
+                    track_no=sura_no,
+                )]}
+        return {uri: []}
+
+    def _lookup_reciter(self, locale: str, data: _LocaleData, reciter_id: int) -> list[Track]:
+        """Expand a reciter URI to all tracks across all moshafs."""
+        self._init_reciters(locale, data)
+        self._init_suras(locale, data)
+        if reciter_id not in data.reciters:
+            return []
+        reciter = data.reciters[reciter_id]
+        artist = Artist(
+            uri=Uri('mp3quran:%s:reciter:%d' % (locale, reciter_id)),
+            name=reciter['name'],
+        )
+        tracks = []
+        for moshaf in reciter['moshaf']:
+            moshaf_uri = Uri('mp3quran:%s:moshaf:%d:%d' % (locale, reciter_id, moshaf['id']))
+            album = Album(uri=moshaf_uri, name=moshaf['name'])
+            for sura_no in moshaf['surah_list']:
+                tracks.append(Track(
+                    uri=Uri('mp3quran:%s:reciter:%d:%d:%d' % (locale, reciter_id, moshaf['id'], sura_no)),
+                    name=data.suras_name.get(sura_no, 'Surah %d' % sura_no),
+                    artists=frozenset([artist]),
+                    album=album,
+                    track_no=sura_no,
+                ))
+        return tracks
+
+    def _lookup_moshaf(self, locale: str, data: _LocaleData, reciter_id: int, moshaf_id: int) -> list[Track]:
+        """Expand a moshaf URI to all its tracks."""
+        self._init_reciters(locale, data)
+        self._init_suras(locale, data)
+        if reciter_id not in data.reciters:
+            return []
+        reciter = data.reciters[reciter_id]
+        for moshaf in reciter['moshaf']:
+            if moshaf['id'] == moshaf_id:
+                moshaf_uri = Uri('mp3quran:%s:moshaf:%d:%d' % (locale, reciter_id, moshaf_id))
+                artist = Artist(
+                    uri=Uri('mp3quran:%s:reciter:%d' % (locale, reciter_id)),
+                    name=reciter['name'],
+                )
+                album = Album(uri=moshaf_uri, name=moshaf['name'])
+                return [Track(
+                    uri=Uri('mp3quran:%s:reciter:%d:%d:%d' % (locale, reciter_id, moshaf_id, sura_no)),
+                    name=data.suras_name.get(sura_no, 'Surah %d' % sura_no),
+                    artists=frozenset([artist]),
+                    album=album,
+                    track_no=sura_no,
+                ) for sura_no in moshaf['surah_list']]
+        return []
+
+    def _lookup_radio(self, locale: str, data: _LocaleData, uri: str) -> dict[Uri, list[Track]]:
+        """Look up a radio track."""
+        radio_id = int(uri.split(':')[3])
+        self._init_radios(locale, data)
+        if radio_id in data.radios:
+            return {uri: [Track(uri=Uri(uri), name=data.radios[radio_id]['name'])]}
+        return {uri: []}
+
+    def _lookup_tafsir_audio(self, locale: str, data: _LocaleData, uri: str) -> dict[Uri, list[Track]]:
+        """Look up a tafsir audio track."""
+        parts = uri.split(':')
+        tafsir_id = int(parts[3])
+        audio_id = int(parts[4])
+        self._init_tafasir(locale, data)
+        self._init_tafsir_audio(locale, data, tafsir_id)
+        audio_info = data.tafsir_audio.get(tafsir_id, {}).get(audio_id)
+        if audio_info:
+            tafsir_name = data.tafasir.get(tafsir_id, {}).get('name', 'Tafsir')
+            return {uri: [Track(uri=Uri(uri), name=audio_info['name'], album=Album(name=tafsir_name))]}
+        return {uri: []}
 
     def translate_uri(self, uri: str) -> Optional[str]:
         """Translate a mopidy URI to a streaming URL."""
@@ -538,25 +671,120 @@ class Mp3Quran:
             return audio_info['url']
         return None
 
-    def search(self, locale: str, query: str) -> List[Ref]:
-        """Search reciters and radios by name (case-insensitive)."""
+    _FUZZY_THRESHOLD = 60.0
+
+    def search(self, locale: str, query: dict, uris: list = None, exact: bool = False) -> SearchResult:
+        """Search reciters, moshafs, suwar, and radios.
+
+        Returns a SearchResult with artists, albums, and tracks,
+        sorted by fuzzy match score (best first).
+        """
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
+        self._init_suras(locale, data)
         self._init_radios(locale, data)
+
+        scored = {'artists': {}, 'albums': {}, 'tracks': {}}
+
+        for field, values in query.items():
+            if isinstance(values, str):
+                values = [values]
+            for value in values:
+                if field in ('any', 'artist', 'albumartist'):
+                    self._merge(scored['artists'], self._match_reciters(data, locale, value, exact))
+                if field in ('any', 'album'):
+                    self._merge(scored['albums'], self._match_moshafs(data, locale, value, exact))
+                if field in ('any', 'track_name'):
+                    self._merge(scored['tracks'], self._match_suwar(data, locale, value, exact))
+                if field == 'any':
+                    self._merge(scored['tracks'], self._match_radios(data, locale, value, exact))
+
+        if uris is not None:
+            scopes = {u for u in uris if u.startswith('mp3quran:')}
+            for category in scored:
+                scored[category] = {
+                    uri: v for uri, v in scored[category].items()
+                    if any(uri.startswith(s) or uri.startswith(s.rstrip('s') + ':') for s in scopes)
+                }
+
+        return SearchResult(
+            uri=Uri('mp3quran:search'),
+            artists=tuple(v[0] for v in sorted(scored['artists'].values(), key=lambda x: x[1], reverse=True)),
+            albums=tuple(v[0] for v in sorted(scored['albums'].values(), key=lambda x: x[1], reverse=True)),
+            tracks=tuple(v[0] for v in sorted(scored['tracks'].values(), key=lambda x: x[1], reverse=True)),
+        )
+
+    @staticmethod
+    def _merge(target: dict, refs: list) -> None:
+        """Merge (ref, score) list into target dict, keeping best score per URI."""
+        for ref, score in refs:
+            if ref.uri not in target or score > target[ref.uri][1]:
+                target[ref.uri] = (ref, score)
+
+    def _match_reciters(self, data: _LocaleData, locale: str, query: str, exact: bool) -> list:
+        choices = {reciter['name']: rid for rid, reciter in data.reciters.items()}
+        return [(Artist(uri=Uri('mp3quran:%s:reciter:%d' % (locale, rid)), name=name), score)
+                for name, score in self._fuzzy_match(query, list(choices.keys()), exact)
+                for rid in [choices[name]]]
+
+    def _match_moshafs(self, data: _LocaleData, locale: str, query: str, exact: bool) -> list:
+        choices = {(rid, m['id']): (m['name'], rid) for rid, r in data.reciters.items() for m in r['moshaf']}
+        name_to_keys = {}
+        for (rid, mid), (mname, _) in choices.items():
+            name_to_keys.setdefault(mname, []).append((rid, mid))
+        return [(Album(
+            uri=Uri('mp3quran:%s:moshaf:%d:%d' % (locale, rid, mid)),
+            name=name,
+            artists=frozenset([Artist(
+                uri=Uri('mp3quran:%s:reciter:%d' % (locale, rid)),
+                name=data.reciters[rid]['name'],
+            )]),
+        ), score)
+            for name, score in self._fuzzy_match(query, list(name_to_keys.keys()), exact)
+            for rid, mid in name_to_keys[name]]
+
+    def _match_suwar(self, data: _LocaleData, locale: str, query: str, exact: bool) -> list:
+        matched = {name: score for name, score in self._fuzzy_match(query, list(data.suras_name.values()), exact)}
         results = []
-        query_lower = query.lower()
-        for reciter_id, reciter in data.reciters.items():
-            if query_lower in reciter['name'].lower():
-                results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
-            else:
+        for sura_no, sura_name in data.suras_name.items():
+            if sura_name not in matched:
+                continue
+            for rid, reciter in data.reciters.items():
                 for moshaf in reciter['moshaf']:
-                    if query_lower in moshaf['name'].lower():
-                        results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
-                        break
-        for radio_id, radio in data.radios.items():
-            if query_lower in radio['name'].lower():
-                results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
+                    if sura_no in moshaf['surah_list']:
+                        results.append((Track(
+                            uri=Uri('mp3quran:%s:reciter:%d:%d:%d' % (locale, rid, moshaf['id'], sura_no)),
+                            name=sura_name,
+                            artists=frozenset([Artist(
+                                uri=Uri('mp3quran:%s:reciter:%d' % (locale, rid)),
+                                name=reciter['name'],
+                            )]),
+                            album=Album(
+                                uri=Uri('mp3quran:%s:moshaf:%d:%d' % (locale, rid, moshaf['id'])),
+                                name=moshaf['name'],
+                            ),
+                            track_no=sura_no,
+                        ), matched[sura_name]))
         return results
+
+    def _match_radios(self, data: _LocaleData, locale: str, query: str, exact: bool) -> list:
+        choices = {radio['name']: rid for rid, radio in data.radios.items()}
+        return [(Track(uri=Uri('mp3quran:%s:radio:%d' % (locale, rid)), name=name), score)
+                for name, score in self._fuzzy_match(query, list(choices.keys()), exact)
+                for rid in [choices[name]]]
+
+    def _fuzzy_match(self, query: str, choices: List[str], exact: bool) -> List[tuple]:
+        if not choices:
+            return []
+        query_lower = query.lower()
+        choices_lower = {c.lower(): c for c in choices}
+        if exact:
+            return [(orig, 100.0) for lower, orig in choices_lower.items() if lower == query_lower]
+        results = process.extract(
+            query_lower, list(choices_lower.keys()), scorer=fuzz.partial_ratio,
+            score_cutoff=self._FUZZY_THRESHOLD, limit=None,
+        )
+        return [(choices_lower[r[0]], r[1]) for r in results]
 
     def get_distinct(self, locale: str, field: str, query: dict = None) -> set:
         """Return distinct values for a field, optionally filtered by query."""
