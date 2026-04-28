@@ -703,13 +703,14 @@ class Mp3Quran:
 
         if uris is not None:
             scopes = {u for u in uris if u.startswith('mp3quran:')}
-            for category in scored:
-                filtered = {}
-                for uri, v in scored[category].items():
-                    item = v[0]
-                    if self._uri_matches_scopes(item, scopes):
-                        filtered[uri] = v
-                scored[category] = filtered
+            if scopes:
+                for category in scored:
+                    filtered = {}
+                    for uri, v in scored[category].items():
+                        item = v[0]
+                        if self._uri_matches_scopes(item, scopes):
+                            filtered[uri] = v
+                    scored[category] = filtered
 
         return SearchResult(
             uri=Uri('mp3quran:search'),
