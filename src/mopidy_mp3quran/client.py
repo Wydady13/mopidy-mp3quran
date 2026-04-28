@@ -21,7 +21,7 @@ class _LocaleData:
     __slots__ = ('reciters', 'radios', 'suras_name', 'riwayat', 'moshaf', 'tafasir',
                  'tafsir_audio',
                  'reciters_ts', 'radios_ts', 'suras_ts', 'riwayat_ts', 'moshaf_ts', 'tafasir_ts',
-                 'tafsir_audio_ts', 'tafsir_audio_ts_map')
+                 'tafsir_audio_ts_map')
 
     def __init__(self):
         self.reciters: Dict[int, Dict[str, Any]] = {}
@@ -37,7 +37,6 @@ class _LocaleData:
         self.riwayat_ts: float = 0.0
         self.moshaf_ts: float = 0.0
         self.tafasir_ts: float = 0.0
-        self.tafsir_audio_ts: float = 0.0
         self.tafsir_audio_ts_map: Dict[int, float] = {}
 
 
