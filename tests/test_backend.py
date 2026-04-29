@@ -302,29 +302,27 @@ class TestMp3QuranLibraryProvider:
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_tafsir_audio(self, library):
-        with responses.mock:
-            responses.add(
-                responses.GET,
-                _api_url('tafsir?tafsir=1&language=eng'),
-                json=TAFASIR_DETAIL_RESPONSE,
-                status=200,
-            )
-            results = library.browse("mp3quran:eng:tafsir:1")
-            assert len(results) == 2
-            assert results[0].uri == "mp3quran:eng:tafsir_audio:1:9"
-            assert results[0].type == Ref.TRACK
+        responses.add(
+            responses.GET,
+            _api_url('tafsir?tafsir=1&language=eng'),
+            json=TAFASIR_DETAIL_RESPONSE,
+            status=200,
+        )
+        results = library.browse("mp3quran:eng:tafsir:1")
+        assert len(results) == 2
+        assert results[0].uri == "mp3quran:eng:tafsir_audio:1:9"
+        assert results[0].type == Ref.TRACK
 
     def test_lookup_tafsir_audio(self, library):
-        with responses.mock:
-            responses.add(
-                responses.GET,
-                _api_url('tafsir?tafsir=1&language=eng'),
-                json=TAFASIR_DETAIL_RESPONSE,
-                status=200,
-            )
-            tracks = library.lookup("mp3quran:eng:tafsir_audio:1:9")
-            assert len(tracks) == 1
-            assert tracks[0].name == "Summary of Tafsir Al-Tabari"
+        responses.add(
+            responses.GET,
+            _api_url('tafsir?tafsir=1&language=eng'),
+            json=TAFASIR_DETAIL_RESPONSE,
+            status=200,
+        )
+        tracks = library.lookup("mp3quran:eng:tafsir_audio:1:9")
+        assert len(tracks) == 1
+        assert tracks[0].name == "Summary of Tafsir Al-Tabari"
 
     def test_browse_unknown_uri(self, library):
         results = library.browse("mp3quran:unknown")

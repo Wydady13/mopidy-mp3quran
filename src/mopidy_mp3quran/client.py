@@ -475,8 +475,12 @@ class Mp3Quran:
         if resp is None:
             return None
         for audio in resp.get('tafasir', {}).get('soar', []):
-            if int(audio['id']) == audio_id:
-                return audio['url']
+            try:
+                if int(audio['id']) == audio_id:
+                    return audio['url']
+            except (KeyError, ValueError):
+                logger.warning('Mp3Quran: Skipping invalid tafsir audio entry')
+                continue
         return None
 
     def search(self, locale: str, query: str) -> List[Ref]:
