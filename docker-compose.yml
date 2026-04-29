@@ -20,7 +20,7 @@ services:
       # Optional: Mount custom Mopidy config
       - ${MOPIDY_CONFIG:-./docker/mopidy.conf}:/etc/mopidy/mopidy.conf:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6680/mopidy/rpc"]
+      test: ["CMD", "curl", "-fsS", "-H", "Content-Type: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"core.get_uri_schemes\"}", "http://localhost:6680/mopidy/rpc"]
       interval: 30s
       timeout: 10s
       retries: 3

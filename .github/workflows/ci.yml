@@ -12,7 +12,7 @@ jobs:
     container: ghcr.io/mopidy/ci:latest
     strategy:
       matrix:
-        python-version: ["3.x", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,3 +30,11 @@ jobs:
 
       - name: Run tests
         run: pytest -v
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build .

@@ -31,6 +31,7 @@ enabled = true
 language = English
 cache_ttl = 3600
 timeout = 10
+validate_stream_url = false
 ```
 
 **Configuration options:**
@@ -65,6 +66,7 @@ timeout = 10
 
 - **cache_ttl** - Cache time-to-live in seconds (default: `3600`). Set to `0` to disable caching.
 - **timeout** - HTTP request timeout in seconds (default: `10`).
+- **validate_stream_url** - Validate stream URLs before returning them (default: `false`). When enabled, the extension checks if the stream URL is accessible before returning it. Inaccessible URLs are blocked and logged as warnings. Note: This adds latency to playback start and may fail for some live radio streams that reject HEAD requests.
 
 ## Usage
 
