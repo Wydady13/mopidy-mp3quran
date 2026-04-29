@@ -22,21 +22,12 @@ RUN apt-get update && \
 RUN ARCH=$(dpkg --print-architecture) && \
     DEBIAN_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
     SNAPSERVER_DEB="snapserver_${SNAPCAST_VERSION}-1_${ARCH}_${DEBIAN_CODENAME}.deb" && \
-    curl -sSL -o "/tmp/${SNAPSERVER_DEB}" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}" && \
-    if curl -sSL -o "/tmp/${SNAPSERVER_DEB}.sha256sum" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}.sha256sum" 2>/dev/null; then \
-        cd /tmp && sha256sum -c "${SNAPSERVER_DEB}.sha256sum"; \
-    else \
-        echo "Warning: Checksum file not found, skipping verification"; \
-    fi && \
-    apt-get install -y --no-install-recommends "/tmp/${SNAPSERVER_DEB}" && \
-    SNAPWEB_DEB="snapweb_${SNAPWEB_VERSION}-1_all.deb" && \
-    curl -sSL -o "/tmp/${SNAPWEB_DEB}" "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/${SNAPWEB_DEB}" && \
-    if curl -sSL -o "/tmp/${SNAPWEB_DEB}.sha256sum" "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/${SNAPWEB_DEB}.sha256sum" 2>/dev/null; then \
-        cd /tmp && sha256sum -c "${SNAPWEB_DEB}.sha256sum"; \
-    else \
-        echo "Warning: Checksum file not found, skipping verification"; \
-    fi && \
-    apt-get install -y --no-install-recommends "/tmp/${SNAPWEB_DEB}"
+    echo "Downloading ${SNAPSERVER_DEB}..." && \
+    curl -fsSL -o "/tmp/snapserver.deb" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}" && \
+    apt-get install -y --no-install-recommends /tmp/snapserver.deb && \
+    echo "Downloading snapweb_${SNAPWEB_VERSION}-1_all.deb..." && \
+    curl -fsSL -o /tmp/snapweb.deb "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/snapweb_${SNAPWEB_VERSION}-1_all.deb" && \
+    apt-get install -y --no-install-recommends /tmp/snapweb.deb
 
 RUN apt-get purge -y gnupg && \
     apt-get autoremove -y && \
