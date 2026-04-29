@@ -92,22 +92,26 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             results = mp3quran.get_language_content(locale)
         elif variant == 'reciters':
             results = mp3quran.get_reciters(locale)
-        elif variant == 'reciter' and identifier:
-            results = mp3quran.reciter_moshaf(locale, int(identifier))
-        elif variant == 'moshaf' and identifier and extra:
-            results = mp3quran.moshaf_suras(locale, int(identifier), int(extra))
-        elif variant == 'riwayat':
-            results = mp3quran.get_riwayat(locale)
-        elif variant == 'riwaya' and identifier:
-            results = mp3quran.riwaya_reciters(locale, int(identifier))
-        elif variant == 'radios':
-            results = mp3quran.get_radios(locale)
-        elif variant == 'tafasir':
-            results = mp3quran.get_tafasir(locale)
-        elif variant == 'tafsir' and identifier:
-            results = mp3quran.tafsir_audio(locale, int(identifier))
-        else:
-            logger.debug('Unknown uri: %s at library.browse', uri)
+        try:
+            if variant == 'reciter' and identifier:
+                results = mp3quran.reciter_moshaf(locale, int(identifier))
+            elif variant == 'moshaf' and identifier and extra:
+                results = mp3quran.moshaf_suras(locale, int(identifier), int(extra))
+            elif variant == 'riwayat':
+                results = mp3quran.get_riwayat(locale)
+            elif variant == 'riwaya' and identifier:
+                results = mp3quran.riwaya_reciters(locale, int(identifier))
+            elif variant == 'radios':
+                results = mp3quran.get_radios(locale)
+            elif variant == 'tafasir':
+                results = mp3quran.get_tafasir(locale)
+            elif variant == 'tafsir' and identifier:
+                results = mp3quran.tafsir_audio(locale, int(identifier))
+            else:
+                logger.debug('Unknown uri: %s at library.browse', uri)
+        except ValueError:
+            logger.debug('Invalid URI identifier in browse: %s', uri)
+            return []
 
         return results
 
