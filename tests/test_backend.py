@@ -330,6 +330,28 @@ class TestMp3QuranLibraryProvider:
         results = library.browse("mp3quran:unknown")
         assert results == []
 
+    def test_browse_invalid_reciter_id(self, library):
+        results = library.browse("mp3quran:eng:reciter:abc")
+        assert results == []
+
+    def test_browse_invalid_moshaf_id(self, library):
+        results = library.browse("mp3quran:eng:moshaf:1:abc")
+        assert results == []
+
+    def test_browse_invalid_riwaya_id(self, library):
+        results = library.browse("mp3quran:eng:riwaya:abc")
+        assert results == []
+
+    def test_browse_invalid_tafsir_id(self, library):
+        results = library.browse("mp3quran:eng:tafsir:abc")
+        assert results == []
+
+    def test_browse_reciters_still_works(self, library):
+        results = library.browse("mp3quran:eng:reciters")
+        assert len(results) == 1
+        assert results[0].uri == "mp3quran:eng:reciter:1"
+        assert results[0].name == "Mishary Rashid Alafasy"
+
     def test_lookup_reciter_surah(self, library):
         tracks = library.lookup("mp3quran:eng:reciter:1:1:2")
         assert len(tracks) == 1

@@ -88,12 +88,12 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         identifier = parsed[3] if len(parsed) >= 4 else None
         extra = parsed[4] if len(parsed) >= 5 else None
 
-        if variant == 'language':
-            results = mp3quran.get_language_content(locale)
-        elif variant == 'reciters':
-            results = mp3quran.get_reciters(locale)
         try:
-            if variant == 'reciter' and identifier:
+            if variant == 'language':
+                results = mp3quran.get_language_content(locale)
+            elif variant == 'reciters':
+                results = mp3quran.get_reciters(locale)
+            elif variant == 'reciter' and identifier:
                 results = mp3quran.reciter_moshaf(locale, int(identifier))
             elif variant == 'moshaf' and identifier and extra:
                 results = mp3quran.moshaf_suras(locale, int(identifier), int(extra))
