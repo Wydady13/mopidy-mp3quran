@@ -242,7 +242,10 @@ class Mp3Quran:
                 stream=True,
                 headers={"Range": "bytes=0-0"},
             )
-            return response.status_code < 400
+            try:
+                return response.status_code < 400
+            finally:
+                response.close()
         except requests.RequestException:
             return False
 

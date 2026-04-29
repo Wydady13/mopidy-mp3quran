@@ -194,7 +194,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
     def search(self, query=None, uris=None, exact=False) -> SearchResult:
         if query is None:
-            return None
+            return SearchResult(uri='mp3quran:search')
 
         if isinstance(query, dict):
             query_str = ' '.join(
@@ -204,7 +204,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             query_str = str(query)
 
         if not query_str.strip():
-            return None
+            return SearchResult(uri='mp3quran:search')
 
         mp3quran = self.backend.mp3quran
         locale = mp3quran.resolve_language(

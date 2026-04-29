@@ -527,3 +527,68 @@ class TestMp3QuranErrorHandling:
             c._ensure_loaded('eng')
             assert 1 in data.radios
             assert len(data.radios) == 1
+
+
+class TestMp3QuranValidateStreamUrl:
+
+    @pytest.fixture
+    def client_with_validation(self, mocked_api):
+        """Return an Mp3Quran client with stream URL validation enabled."""
+        return Mp3Quran(cache_ttl=3600, timeout=10, validate_stream_url=True)
+
+    @pytest.fixture
+    def client_without_validation(self, mocked_api):
+        """Return an Mp3Quran client with stream URL validation disabled."""
+        return Mp3Quran(cache_ttl=3600, timeout=10, validate_stream_url=False)
+
+    def test_validation_disabled_returns_url_without_checking(self, client_without_validation):
+        """When validation is disabled, URL is returned without any HTTP check."""
+        url = client_without_validation.translate_uri("mp3quran:eng:reciter:1:1:2")
+        assert url == "https://server.example.com/mishary/002.mp3"
+
+    def test_validation_enabled_head_success_returns_url(self, client_with_validation):
+        """When HEAD request succeeds, URL is returned."""
+        with responses.mock:
+            responses.add(responses.HEAD, "https://server.example.com/mishary/002.mp3", status=200)
+            url = client_with_validation.translate_uri("mp3quran:eng:reciter:1:1:2")
+            assert url == "https://server.example.com/mishary/002.mp3"
+
+    def test_validation_enabled_head_fails_get_succeeds_returns_url(self, client_with_validation):
+        """When HEAD fails but ranged GET succeeds, URL is returned."""
+        with responses.mock:
+            responses.add(responses.HEAD, "https://server.example.com/mishary/002.mp3", status=403)
+            responses.add(responses.GET, "https://server.example.com/mishary/002.mp3", status=206)
+            url = client_with_validation.translate_uri("mp3quran:eng:reciter:1:1:2")
+            assert url == "https://server.example.com/mishary/002.mp3"
+
+    def test_validation_enabled_both_fail_returns_none(self, client_with_validation):
+        """When both HEAD and GET fail, None is returned."""
+        with responses.mock:
+            responses.add(responses.HEAD, "https://server.example.com/mishary/002.mp3", status=403)
+            responses.add(responses.GET, "https://server.example.com/mishary/002.mp3", status=404)
+            url = client_with_validation.translate_uri("mp3quran:eng:reciter:1:1:2")
+            assert url is None
+
+    def test_validation_enabled_radio_success(self, client_with_validation):
+        """Radio stream validation works."""
+        with responses.mock:
+            responses.add(responses.HEAD, "https://stream.example.com/radio1", status=200)
+            url = client_with_validation.translate_uri("mp3quran:eng:radio:1")
+            assert url == "https://stream.example.com/radio1"
+
+    def test_validation_enabled_radio_fails_returns_none(self, client_with_validation):
+        """Radio stream validation failure returns None."""
+        with responses.mock:
+            responses.add(responses.HEAD, "https://stream.example.com/radio1", status=404)
+            responses.add(responses.GET, "https://stream.example.com/radio1", status=404)
+            url = client_with_validation.translate_uri("mp3quran:eng:radio:1")
+            assert url is None
+
+    def test_validation_enabled_request_exception_returns_none(self, client_with_validation):
+        """Request exceptions are caught and None is returned."""
+        import requests
+        with responses.mock:
+            responses.add(responses.HEAD, "https://server.example.com/mishary/002.mp3", body=requests.ConnectionError())
+            responses.add(responses.GET, "https://server.example.com/mishary/002.mp3", body=requests.ConnectionError())
+            url = client_with_validation.translate_uri("mp3quran:eng:reciter:1:1:2")
+            assert url is None

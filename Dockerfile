@@ -16,8 +16,7 @@ RUN apt-get update && \
     libgirepository-2.0-dev \
     xdg-user-dirs \
     ca-certificates \
-    curl \
-    gnupg
+    curl
 
 RUN ARCH=$(dpkg --print-architecture) && \
     DEBIAN_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
@@ -29,9 +28,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL -o /tmp/snapweb.deb "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/snapweb_${SNAPWEB_VERSION}-1_all.deb" && \
     apt-get install -y --no-install-recommends /tmp/snapweb.deb
 
-RUN apt-get purge -y gnupg && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/* /tmp/*.deb /tmp/*.sha256sum && \
+RUN apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/*.deb && \
     mkdir -p /var/lib/mopidy/media /audio
 
 RUN pip install --no-cache-dir mopidy-mpd
