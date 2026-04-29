@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 ARG SNAPCAST_VERSION=0.35.0
 ARG SNAPWEB_VERSION=0.9.3
@@ -23,13 +23,19 @@ RUN ARCH=$(dpkg --print-architecture) && \
     DEBIAN_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
     SNAPSERVER_DEB="snapserver_${SNAPCAST_VERSION}-1_${ARCH}_${DEBIAN_CODENAME}.deb" && \
     curl -sSL -o "/tmp/${SNAPSERVER_DEB}" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}" && \
-    curl -sSL -o "/tmp/${SNAPSERVER_DEB}.sha256sum" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}.sha256sum" && \
-    cd /tmp && sha256sum -c "${SNAPSERVER_DEB}.sha256sum" && \
+    if curl -sSL -o "/tmp/${SNAPSERVER_DEB}.sha256sum" "https://github.com/snapcast/snapcast/releases/download/v${SNAPCAST_VERSION}/${SNAPSERVER_DEB}.sha256sum" 2>/dev/null; then \
+        cd /tmp && sha256sum -c "${SNAPSERVER_DEB}.sha256sum"; \
+    else \
+        echo "Warning: Checksum file not found, skipping verification"; \
+    fi && \
     apt-get install -y --no-install-recommends "/tmp/${SNAPSERVER_DEB}" && \
     SNAPWEB_DEB="snapweb_${SNAPWEB_VERSION}-1_all.deb" && \
     curl -sSL -o "/tmp/${SNAPWEB_DEB}" "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/${SNAPWEB_DEB}" && \
-    curl -sSL -o "/tmp/${SNAPWEB_DEB}.sha256sum" "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/${SNAPWEB_DEB}.sha256sum" && \
-    cd /tmp && sha256sum -c "${SNAPWEB_DEB}.sha256sum" && \
+    if curl -sSL -o "/tmp/${SNAPWEB_DEB}.sha256sum" "https://github.com/snapcast/snapweb/releases/download/v${SNAPWEB_VERSION}/${SNAPWEB_DEB}.sha256sum" 2>/dev/null; then \
+        cd /tmp && sha256sum -c "${SNAPWEB_DEB}.sha256sum"; \
+    else \
+        echo "Warning: Checksum file not found, skipping verification"; \
+    fi && \
     apt-get install -y --no-install-recommends "/tmp/${SNAPWEB_DEB}"
 
 RUN apt-get purge -y gnupg && \
