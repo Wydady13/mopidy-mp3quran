@@ -1,3 +1,5 @@
+import json
+import os
 import time
 import logging
 from typing import Dict, List, Optional, Any
@@ -5,17 +7,26 @@ from typing import Dict, List, Optional, Any
 import requests
 from mopidy.models import Ref
 
+try:
+    from rapidfuzz import fuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    _HAS_RAPIDFUZZ = False
+    def fuzz_partial_ratio(a, b):
+        return 100 if a.lower() in b.lower() else 0
+
 logger = logging.getLogger(__name__)
 
 _API_BASE = 'https://mp3quran.net/api/v3/'
-_DEFAULT_CACHE_TTL = 3600  # 1 hour
-_DEFAULT_TIMEOUT = 10  # seconds
+_DEFAULT_CACHE_TTL = 3600
+_DEFAULT_TIMEOUT = 10
 _DEFAULT_LOCALE = 'eng'
+_DEFAULT_FUZZY_THRESHOLD = 60
+_DEFAULT_SEARCH_LIMIT = 50
+_DEFAULT_RECENTLY_PLAYED_PATH = os.path.join(os.path.expanduser('~'), '.local', 'share', 'mopidy-mp3quran', 'recently_played.json')
 
 
 class _LocaleData:
-    """Cached data for a single locale."""
-
     __slots__ = ('reciters', 'radios', 'suras_name', 'riwayat', 'tafasir',
                  'reciters_ts', 'radios_ts', 'suras_ts', 'riwayat_ts', 'tafasir_ts')
 
@@ -33,34 +44,32 @@ class _LocaleData:
 
 
 class Mp3Quran:
-    """Client for the mp3quran.net v3 REST API with per-locale caching."""
-
     def __init__(
         self,
         session: requests.Session = None,
         cache_ttl: int = _DEFAULT_CACHE_TTL,
         timeout: int = _DEFAULT_TIMEOUT,
         validate_stream_url: bool = False,
+        fuzzy_threshold: int = None,
+        search_limit: int = None,
+        recently_played_path: str = None,
     ) -> None:
         self.session = session or requests.Session()
         self.cache_ttl = cache_ttl
         self.timeout = timeout
         self._validate_stream_url = validate_stream_url
+        self.fuzzy_threshold = fuzzy_threshold if fuzzy_threshold is not None else _DEFAULT_FUZZY_THRESHOLD
+        self.search_limit = search_limit if search_limit is not None else _DEFAULT_SEARCH_LIMIT
+        self.recently_played_path = recently_played_path or _DEFAULT_RECENTLY_PLAYED_PATH
 
         self.languages: List[Dict[str, str]] = []
         self._languages_timestamp: float = 0.0
-
         self._locales: Dict[str, _LocaleData] = {}
+        self._recently_played: Dict[str, Any] = self._load_recently_played()
 
         self._init_languages()
 
     def resolve_language(self, name: str) -> str:
-        """Resolve a language name or locale code to a canonical locale code.
-
-        Accepts both long form (e.g. 'English', 'arabic') and short form
-        (e.g. 'eng', 'AR'). Case-insensitive. Returns the locale as-is if
-        no match is found (may be a valid locale the API hasn't listed yet).
-        """
         lower = name.lower().strip()
         for lang in self.languages:
             if lang['locale'].lower() == lower or lang['name'].lower() == lower:
@@ -68,13 +77,11 @@ class Mp3Quran:
         return lower
 
     def _get_locale_data(self, locale: str) -> _LocaleData:
-        """Get or create locale data, loading on first access."""
         if locale not in self._locales:
             self._locales[locale] = _LocaleData()
         return self._locales[locale]
 
     def _ensure_loaded(self, locale: str, data: _LocaleData = None) -> None:
-        """Ensure data for a locale is loaded from the API."""
         if data is None:
             data = self._get_locale_data(locale)
         self._init_suras(locale, data)
@@ -89,7 +96,6 @@ class Mp3Quran:
         return (time.time() - timestamp) < self.cache_ttl
 
     def _fetch(self, url: str) -> Optional[dict]:
-        """Fetch JSON from a URL with error handling."""
         try:
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
@@ -230,12 +236,10 @@ class Mp3Quran:
         data.radios_ts = time.time()
 
     def _is_url_accessible(self, url: str) -> bool:
-        """Check if a URL is accessible via HEAD or GET request."""
         try:
             response = self.session.head(url, timeout=self.timeout, allow_redirects=True)
             if response.status_code < 400:
                 return True
-            # Fallback to GET with Range header for servers that reject HEAD
             response = self.session.get(
                 url,
                 timeout=self.timeout,
@@ -249,8 +253,50 @@ class Mp3Quran:
         except requests.RequestException:
             return False
 
+    def _score_query(self, query: str, target: str) -> int:
+        if _HAS_RAPIDFUZZ:
+            return fuzz.partial_ratio(query.lower(), target.lower())
+        else:
+            return fuzz_partial_ratio(query.lower(), target.lower())
+
+    def _load_recently_played(self) -> Dict[str, Any]:
+        if not os.path.exists(self.recently_played_path):
+            return {}
+        try:
+            with open(self.recently_played_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning('Mp3Quran: Failed to load recently played: %s', e)
+            return {}
+
+    def _save_recently_played(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(self.recently_played_path), exist_ok=True)
+            with open(self.recently_played_path, 'w', encoding='utf-8') as f:
+                json.dump(self._recently_played, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            logger.error('Mp3Quran: Failed to save recently played: %s', e)
+
+    def get_recently_played(self) -> Optional[Dict[str, Any]]:
+        return self._recently_played.get('last') if self._recently_played else None
+
+    def set_recently_played(self, uri: str, name: str, variant: str, locale: str = None, reciter_id: int = None, moshaf_id: int = None, sura_no: int = None, radio_id: int = None, tafsir_id: int = None, audio_id: int = None) -> None:
+        self._recently_played['last'] = {
+            'uri': uri,
+            'name': name,
+            'variant': variant,
+            'locale': locale,
+            'reciter_id': reciter_id,
+            'moshaf_id': moshaf_id,
+            'sura_no': sura_no,
+            'radio_id': radio_id,
+            'tafsir_id': tafsir_id,
+            'audio_id': audio_id,
+            'timestamp': time.time(),
+        }
+        self._save_recently_played()
+
     def translate_uri(self, uri: str) -> Optional[str]:
-        """Translate a mopidy URI to a streaming URL."""
         parsed = uri.split(':')[1:]
         if not parsed:
             logger.debug('Mp3Quran: Could not translate URI: %s', uri)
@@ -282,9 +328,15 @@ class Mp3Quran:
             if reciter_id not in data.reciters:
                 logger.debug('Mp3Quran: Reciter ID %d not found for URI: %s', reciter_id, uri)
                 return None
-            for moshaf in data.reciters[reciter_id]['moshaf']:
+            reciter = data.reciters[reciter_id]
+            for moshaf in reciter['moshaf']:
                 if moshaf['id'] == moshaf_id and sura_no in moshaf['surah_list']:
                     stream_url = moshaf['server'].rstrip('/') + '/%03d' % sura_no + '.mp3'
+                    self.set_recently_played(
+                        uri=uri, name=data.suras_name.get(sura_no, 'Surah %d' % sura_no),
+                        variant='reciter', locale=locale,
+                        reciter_id=reciter_id, moshaf_id=moshaf_id, sura_no=sura_no
+                    )
                     if self._validate_stream_url and not self._is_url_accessible(stream_url):
                         logger.warning('Mp3Quran: Stream URL not accessible: %s', stream_url)
                         return None
@@ -295,6 +347,10 @@ class Mp3Quran:
             self._init_radios(locale, data)
             if radio_id in data.radios:
                 stream_url = data.radios[radio_id]['url']
+                self.set_recently_played(
+                    uri=uri, name=data.radios[radio_id]['name'],
+                    variant='radio', locale=locale, radio_id=radio_id
+                )
                 if self._validate_stream_url and not self._is_url_accessible(stream_url):
                     logger.warning('Mp3Quran: Radio stream not accessible: %s', stream_url)
                     return None
@@ -304,6 +360,11 @@ class Mp3Quran:
         elif variant == 'tafsir_audio':
             url = self.translate_tafsir_uri(tafsir_id, audio_id, locale=locale)
             if url:
+                self.set_recently_played(
+                    uri=uri, name='Tafsir Audio',
+                    variant='tafsir_audio', locale=locale,
+                    tafsir_id=tafsir_id, audio_id=audio_id
+                )
                 if self._validate_stream_url and not self._is_url_accessible(url):
                     logger.warning('Mp3Quran: Tafsir audio not accessible: %s', url)
                     return None
@@ -324,7 +385,6 @@ class Mp3Quran:
         return results
 
     def get_language_content(self, locale: str) -> List[Ref]:
-        """Get the content category directories for a language."""
         resolved = self.resolve_language(locale)
         results = []
         results.append(Ref.directory(uri='mp3quran:%s:reciters' % resolved, name='Reciters'))
@@ -350,7 +410,6 @@ class Mp3Quran:
         return results
 
     def reciter_moshaf(self, locale: str, reciter_id: int) -> List[Ref]:
-        """Return moshaf (recitation versions) for a reciter."""
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
         results = []
@@ -369,7 +428,6 @@ class Mp3Quran:
         return results
 
     def moshaf_suras(self, locale: str, reciter_id: int, moshaf_id: int) -> List[Ref]:
-        """Return surahs for a specific moshaf of a reciter."""
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
         self._init_suras(locale, data)
@@ -483,28 +541,64 @@ class Mp3Quran:
                 continue
         return None
 
-    def search(self, locale: str, query: str) -> List[Ref]:
-        """Search reciters and radios by name (case-insensitive)."""
+    def search(self, locale: str, query: str, filters: List[str] = None) -> List[Ref]:
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
         self._init_radios(locale, data)
-        results = []
-        query_lower = query.lower()
-        for reciter_id, reciter in data.reciters.items():
-            if query_lower in reciter['name'].lower():
-                results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
-            else:
+        self._init_riwayat(locale, data)
+        self._init_tafasir(locale, data)
+        self._init_suras(locale, data)
+
+        matches = []
+        filters = filters or ['reciters', 'radios', 'riwayat', 'tafasir', 'suras']
+        seen_reciters = set()
+        seen_riwayat = set()
+
+        if 'reciters' in filters:
+            for reciter_id, reciter in data.reciters.items():
+                score = self._score_query(query, reciter['name'])
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name'])))
+                    seen_reciters.add(reciter_id)
+                    continue
                 for moshaf in reciter['moshaf']:
-                    if query_lower in moshaf['name'].lower():
-                        results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
+                    score = self._score_query(query, moshaf['name'])
+                    if score >= self.fuzzy_threshold:
+                        matches.append((score, Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name'])))
+                        seen_reciters.add(reciter_id)
                         break
-        for radio_id, radio in data.radios.items():
-            if query_lower in radio['name'].lower():
-                results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
-        return results
+
+        if 'radios' in filters:
+            for radio_id, radio in data.radios.items():
+                score = self._score_query(query, radio['name'])
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name'])))
+
+        if 'riwayat' in filters:
+            for riwaya_id, riwaya_name in data.riwayat.items():
+                if riwaya_id in seen_riwayat:
+                    continue
+                score = self._score_query(query, riwaya_name)
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.directory(uri='mp3quran:%s:riwaya:%d' % (locale, riwaya_id), name=riwaya_name)))
+                    seen_riwayat.add(riwaya_id)
+
+        if 'tafasir' in filters:
+            for tafsir_id, tafsir in data.tafasir.items():
+                score = self._score_query(query, tafsir['name'])
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.directory(uri='mp3quran:%s:tafsir:%d' % (locale, tafsir_id), name=tafsir['name'])))
+
+        if 'suras' in filters:
+            for sura_no, sura_name in data.suras_name.items():
+                score = self._score_query(query, sura_name)
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.track(uri='mp3quran:%s:search:sura:%d' % (locale, sura_no), name=sura_name)))
+
+        matches.sort(key=lambda x: x[0], reverse=True)
+        return [ref for _, ref in matches[:self.search_limit]]
 
     def refresh(self) -> None:
-        """Force re-fetch all data from the API."""
         self.languages = []
         self._locales.clear()
         self._languages_timestamp = 0.0

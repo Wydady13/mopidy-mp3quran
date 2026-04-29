@@ -27,6 +27,8 @@ class Extension(ext.Extension):
         schema['cache_ttl'] = config.Integer(minimum=0)
         schema['timeout'] = config.Integer(minimum=1)
         schema['validate_stream_url'] = config.Boolean()
+        schema['fuzzy_threshold'] = config.Integer(minimum=1, maximum=100, optional=True)
+        schema['search_limit'] = config.Integer(minimum=1, maximum=100, optional=True)
         return schema
 
     def setup(self, registry) -> None:

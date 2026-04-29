@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 def get_requests_session(proxy_config, user_agent: str) -> _requests.Session:
-    """Create a requests session with proxy and user agent settings."""
     proxy = httpclient.format_proxy(proxy_config)
     full_user_agent = httpclient.format_user_agent(user_agent)
 
@@ -25,8 +24,6 @@ def get_requests_session(proxy_config, user_agent: str) -> _requests.Session:
 
 
 class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
-    """Backend for streaming Quran from mp3quran.net."""
-
     uri_schemes = ['mp3quran']
 
     def __init__(self, config, audio) -> None:
@@ -35,7 +32,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         self.audio = audio
         self.config = config
         self.session = get_requests_session(
-            proxy_config=self.config["proxy"],
+            proxy_config=self.config.get("proxy", {}),
             user_agent='%s/%s' % (
                 mopidy_mp3quran.Extension.dist_name,
                 mopidy_mp3quran.__version__)
@@ -47,6 +44,8 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
             validate_stream_url=mp3quran_config.get('validate_stream_url', False),
+            fuzzy_threshold=mp3quran_config.get('fuzzy_threshold'),
+            search_limit=mp3quran_config.get('search_limit'),
         )
 
         self.library = Mp3QuranLibraryProvider(backend=self)
@@ -54,36 +53,49 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
 
 
 class Mp3QuranLibraryProvider(backend.LibraryProvider):
-    """Library provider for browsing Quran reciters and radios."""
-
     root_directory = Ref.directory(uri='mp3quran:root', name='Mp3Quran')
 
     def browse(self, uri: str) -> List[Ref]:
-        """Browse the library at the given URI."""
         results = []
         parsed = uri.split(':')
         mp3quran = self.backend.mp3quran
 
-        # mp3quran:root
         if len(parsed) == 2 and parsed[1] == 'root':
             locale = mp3quran.resolve_language(
                 self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
             )
             results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
+            recently_played = mp3quran.get_recently_played()
+            if recently_played:
+                results.append(Ref.directory(uri='mp3quran:recently_played', name='Recently Played'))
             results.extend(mp3quran.get_language_content(locale))
             return results
 
-        # mp3quran:languages
+        if len(parsed) == 2 and parsed[1] == 'recently_played':
+            recently_played = mp3quran.get_recently_played()
+            if recently_played:
+                rp = recently_played
+                if rp.get('variant') == 'reciter' and rp.get('sura_no'):
+                    results.append(Ref.track(
+                        uri=rp['uri'],
+                        name='Resume: %s' % rp.get('name', 'Last Recitation')
+                    ))
+                elif rp.get('variant') == 'radio':
+                    results.append(Ref.track(uri=rp['uri'], name='Resume: %s' % rp.get('name', 'Last Radio')))
+            return results
+
         if len(parsed) == 2 and parsed[1] == 'languages':
             results = mp3quran.get_languages()
             return results
 
-        # mp3quran:<locale>:<variant>[:<id>...]
         if len(parsed) < 3:
             logger.debug('Unknown uri: %s at library.browse', uri)
             return results
 
         locale = parsed[1]
+        if not locale:
+            logger.debug('Empty locale in uri: %s', uri)
+            return results
         variant = parsed[2]
         identifier = parsed[3] if len(parsed) >= 4 else None
         extra = parsed[4] if len(parsed) >= 5 else None
@@ -119,7 +131,6 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         self.backend.mp3quran.refresh()
 
     def lookup(self, uri: str) -> List[Track]:
-        """Look up a track by URI."""
         tracks = []
         parsed_uri = uri.split(':')[1:]
         logger.debug('Looking up uri: %s', uri)
