@@ -391,11 +391,15 @@ class TestMp3QuranLibrarySearch:
 
     def test_search_none_query(self, library):
         result = library.search(query=None)
-        assert result is None
+        assert isinstance(result, SearchResult)
+        assert len(result.tracks) == 0
+        assert len(result.artists) == 0
 
     def test_search_empty_query(self, library):
         result = library.search(query="")
-        assert result is None
+        assert isinstance(result, SearchResult)
+        assert len(result.tracks) == 0
+        assert len(result.artists) == 0
 
     def test_search_dict_query(self, library):
         result = library.search(query={"any": "Mishary"})
