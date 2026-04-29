@@ -46,6 +46,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
             session=self.session,
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
+            validate_stream_url=mp3quran_config.get('validate_stream_url', False),
         )
 
         self.library = Mp3QuranLibraryProvider(backend=self)

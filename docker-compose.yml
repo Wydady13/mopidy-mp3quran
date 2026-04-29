@@ -5,16 +5,30 @@ services:
     environment:
       - TERM=dumb
     ports:
-      - "6600:6600"
-      - "6680:6680"
-      - "1704:1704"
-      - "1705:1705"
-      - "1780:1780"
+      - "6600:6600"    # MPD protocol
+      - "6680:6680"    # Mopidy HTTP API
+      - "1704:1704"    # Snapcast server
+      - "1705:1705"    # Snapcast control
+      - "1780:1780"    # Snapweb UI
     volumes:
+      # Mopidy cache (track metadata, API responses)
       - mopidy-cache:/var/cache/mopidy
+      # Mopidy data (playlists, local audio)
       - mopidy-data:/var/lib/mopidy
-      - $HOME/Music:/var/lib/mopidy/media:ro
+      # Optional: Mount your local music library
+      - ${MUSIC_DIR:-$HOME/Music}:/var/lib/mopidy/media:ro
+      # Optional: Mount custom Mopidy config
+      - ${MOPIDY_CONFIG:-./docker/mopidy.conf}:/etc/mopidy/mopidy.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6680/mopidy/rpc"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
 
 volumes:
   mopidy-cache:
+    driver: local
   mopidy-data:
+    driver: local

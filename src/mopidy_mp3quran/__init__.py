@@ -26,6 +26,7 @@ class Extension(ext.Extension):
         schema['language'] = config.String()
         schema['cache_ttl'] = config.Integer(minimum=0)
         schema['timeout'] = config.Integer(minimum=1)
+        schema['validate_stream_url'] = config.Boolean()
         return schema
 
     def setup(self, registry) -> None:

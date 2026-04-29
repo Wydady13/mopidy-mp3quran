@@ -40,10 +40,12 @@ class Mp3Quran:
         session: requests.Session = None,
         cache_ttl: int = _DEFAULT_CACHE_TTL,
         timeout: int = _DEFAULT_TIMEOUT,
+        validate_stream_url: bool = False,
     ) -> None:
         self.session = session or requests.Session()
         self.cache_ttl = cache_ttl
         self.timeout = timeout
+        self._validate_stream_url = validate_stream_url
 
         self.languages: List[Dict[str, str]] = []
         self._languages_timestamp: float = 0.0
@@ -227,11 +229,19 @@ class Mp3Quran:
                 continue
         data.radios_ts = time.time()
 
+    def _is_url_accessible(self, url: str) -> bool:
+        """Check if a URL is accessible via HEAD request."""
+        try:
+            response = self.session.head(url, timeout=self.timeout, allow_redirects=True)
+            return response.status_code < 400
+        except Exception:
+            return False
+
     def translate_uri(self, uri: str) -> Optional[str]:
         """Translate a mopidy URI to a streaming URL."""
         parsed = uri.split(':')[1:]
         if not parsed:
-            logger.debug('Could not translate uri: %s', uri)
+            logger.error('Mp3Quran: Could not translate URI: %s', uri)
             return None
 
         try:
@@ -247,10 +257,10 @@ class Mp3Quran:
                 tafsir_id = int(parsed[2])
                 audio_id = int(parsed[3])
             else:
-                logger.debug('Invalid uri format: %s', uri)
+                logger.error('Mp3Quran: Invalid URI format: %s', uri)
                 return None
         except (ValueError, IndexError) as e:
-            logger.debug('Invalid uri format %s: %s', uri, e)
+            logger.error('Mp3Quran: Invalid URI format %s: %s', uri, e)
             return None
 
         data = self._get_locale_data(locale)
@@ -258,27 +268,38 @@ class Mp3Quran:
         if variant == 'reciter':
             self._init_reciters(locale, data)
             if reciter_id not in data.reciters:
-                logger.debug('Reciter ID %d not found', reciter_id)
+                logger.error('Mp3Quran: Reciter ID %d not found for URI: %s', reciter_id, uri)
                 return None
             for moshaf in data.reciters[reciter_id]['moshaf']:
                 if moshaf['id'] == moshaf_id and sura_no in moshaf['surah_list']:
-                    return moshaf['server'].rstrip('/') + '/%03d' % sura_no + '.mp3'
-            logger.debug('Moshaf %d or surah %d not found for reciter %d', moshaf_id, sura_no, reciter_id)
+                    stream_url = moshaf['server'].rstrip('/') + '/%03d' % sura_no + '.mp3'
+                    if self._validate_stream_url:
+                        if not self._is_url_accessible(stream_url):
+                            logger.warning('Mp3Quran: Stream URL not accessible: %s', stream_url)
+                    return stream_url
+            logger.error('Mp3Quran: Moshaf %d or surah %d not found for reciter %d (URI: %s)', moshaf_id, sura_no, reciter_id, uri)
             return None
         elif variant == 'radio':
             self._init_radios(locale, data)
             if radio_id in data.radios:
-                return data.radios[radio_id]['url']
-            logger.debug('Radio ID %d not found', radio_id)
+                stream_url = data.radios[radio_id]['url']
+                if self._validate_stream_url:
+                    if not self._is_url_accessible(stream_url):
+                        logger.warning('Mp3Quran: Radio stream not accessible: %s', stream_url)
+                return stream_url
+            logger.error('Mp3Quran: Radio ID %d not found for URI: %s', radio_id, uri)
             return None
         elif variant == 'tafsir_audio':
             url = self.translate_tafsir_uri(tafsir_id, audio_id, locale=locale)
             if url:
+                if self._validate_stream_url:
+                    if not self._is_url_accessible(url):
+                        logger.warning('Mp3Quran: Tafsir audio not accessible: %s', url)
                 return url
-            logger.debug('Tafsir audio %d/%d not found', tafsir_id, audio_id)
+            logger.error('Mp3Quran: Tafsir audio %d/%d not found for URI: %s', tafsir_id, audio_id, uri)
             return None
 
-        logger.debug('Could not translate uri: %s', uri)
+        logger.error('Mp3Quran: Could not translate URI: %s', uri)
         return None
 
     def get_languages(self) -> List[Ref]:
